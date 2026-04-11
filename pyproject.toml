@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "predictdesign"
+version = "0.1.0"
+description = "Modular experimental framework for temporal multi-agent collaboration graph prediction."
+requires-python = ">=3.11"
+dependencies = ["torch>=2.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["predictdesign*"]
