@@ -39,6 +39,23 @@ class ExperimentConfig:
     gnn_type: str = "gcn"
     predictor_backend: str = "gnn"
     device: str = "cpu"
+    # Relational Transformer settings
+    rt_num_heads: int = 4
+    rt_dropout: float = 0.1
+    # SentenceTransformer settings
+    sentence_transformer_path: str = "all-MiniLM-L6-v2"
+    sentence_transformer_dim: int = 384
+    sentence_transformer_freeze: bool = True
+    # Cold start
+    use_cold_start: bool = True
+    # Completion detection
+    use_completion_detection: bool = True
+    completion_threshold: float = 0.5
+    # Training improvements
+    use_focal_loss: bool = True
+    focal_loss_gamma: float = 2.0
+    gradient_clip_norm: float = 1.0
+    warmup_fraction: float = 0.2
     candidate_new_roles: tuple[str, ...] = field(
         default_factory=lambda: ("planner", "solver", "critic", "tool")
     )
@@ -82,14 +99,20 @@ class ExperimentConfig:
             raise ValueError("concurrent_update_mode must be 'sum' or 'mean'.")
         if self.state_updater_type not in {"gru", "mdp"}:
             raise ValueError("state_updater_type must be 'gru' or 'mdp'.")
-        if self.gnn_type not in {"gcn", "graphsage", "gat", "llm_api"}:
-            raise ValueError("gnn_type must be one of: gcn, graphsage, gat, llm_api.")
+        if self.gnn_type not in {"gcn", "graphsage", "gat", "relational_transformer", "llm_api"}:
+            raise ValueError(
+                "gnn_type must be one of: gcn, graphsage, gat, relational_transformer, llm_api."
+            )
         if self.predictor_backend not in {"gnn", "llm_api"}:
             raise ValueError("predictor_backend must be 'gnn' or 'llm_api'.")
         if not self.candidate_new_roles:
             raise ValueError("candidate_new_roles must not be empty.")
         if not self.candidate_relation_types:
             raise ValueError("candidate_relation_types must not be empty.")
+        if self.rt_num_heads <= 0:
+            raise ValueError("rt_num_heads must be positive.")
+        if self.rt_dropout < 0 or self.rt_dropout >= 1:
+            raise ValueError("rt_dropout must be in [0, 1).")
         if not self.llm_api.base_url:
             raise ValueError("llm_api.base_url must not be empty.")
         if not self.llm_api.model:

@@ -1,3 +1,10 @@
+"""minimal_demo.py — 基础 GNN（GraphSAGE）用法演示。
+
+如需体验 Relational Transformer + 冷启动 + 完成检测，见 examples/rt_demo.py。
+
+运行方式:
+    python examples/minimal_demo.py
+"""
 from __future__ import annotations
 
 import sys
@@ -27,9 +34,9 @@ def main() -> None:
     system = PredictDesignSystem(config=config)
     system.initialize_graph(
         nodes=[
-            TemporalNode.build("user_proxy", "planner", [1, 0, 0, 0, 1, 0, 0, 0], 8, "cpu"),
-            TemporalNode.build("engineer", "coder", [0, 1, 0, 0, 0, 1, 0, 0], 8, "cpu"),
-            TemporalNode.build("critic", "reviewer", [0, 0, 1, 0, 0, 0, 1, 0], 8, "cpu"),
+            TemporalNode.build("user_proxy", "planner", context=None, context_dim=8, device="cpu"),
+            TemporalNode.build("engineer", "coder", context=None, context_dim=8, device="cpu"),
+            TemporalNode.build("critic", "reviewer", context=None, context_dim=8, device="cpu"),
         ],
         edges=[
             TemporalEdge("user_proxy", "engineer", 0.0, 5.0),
@@ -41,7 +48,7 @@ def main() -> None:
             Message.build_query_message(
                 target_node_id="user_proxy",
                 time=0.5,
-                context=[0.2] * 8,
+                context=None,
                 context_dim=8,
                 device="cpu",
             ),
@@ -49,16 +56,7 @@ def main() -> None:
                 time=2.0,
                 source_node_id="engineer",
                 target_node_id="critic",
-                context=[0.3] * 8,
-                hidden_dim=16,
-                context_dim=8,
-                device="cpu",
-            ),
-            Message.build_completion_message(
-                time=2.0,
-                source_node_id="critic",
-                target_node_id="user_proxy",
-                context=[0.1] * 8,
+                context=None,
                 hidden_dim=16,
                 context_dim=8,
                 device="cpu",
@@ -76,3 +74,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -4,10 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "predictdesign"
-version = "0.1.0"
+version = "0.2.0"
 description = "Modular experimental framework for temporal multi-agent collaboration graph prediction."
 requires-python = ">=3.11"
-dependencies = ["torch>=2.0"]
+dependencies = [
+    "torch>=2.0",
+    "sentence-transformers>=2.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pdfplumber"]
 
 [tool.setuptools.packages.find]
 where = ["."]

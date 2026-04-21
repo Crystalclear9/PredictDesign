@@ -6,9 +6,30 @@ from math import ceil
 import torch
 import torch.nn.functional as F
 
+from ..config import ExperimentConfig
 from ..experiment import PredictDesignSystem
 from ..prediction import GraphActionType, PredictedGraphAction
 from .types import BenchmarkEpisode, EpisodeStep
+
+
+def _focal_loss(
+    logits: torch.Tensor,
+    target_indices: list[int],
+    gamma: float = 2.0,
+) -> torch.Tensor:
+    """Focal loss variant of multi-target cross-entropy.
+
+    Focuses training on hard-to-classify samples by down-weighting
+    easy examples: FL(p) = -alpha * (1-p)^gamma * log(p)
+    """
+    if not target_indices:
+        return logits.new_tensor(0.0)
+    probs = torch.softmax(logits, dim=0)
+    index_tensor = torch.tensor(target_indices, dtype=torch.long, device=logits.device)
+    target_probs = probs.index_select(0, index_tensor)
+    target_prob = target_probs.sum().clamp(min=1e-8)
+    focal_weight = (1.0 - target_prob) ** gamma
+    return -focal_weight * torch.log(target_prob)
 
 
 @dataclass(slots=True)
@@ -45,28 +66,46 @@ class BenchmarkTrainer:
             eval_episodes=episodes[train_count:],
         )
 
-    def fit(self, system: PredictDesignSystem, episodes: list[BenchmarkEpisode]) -> None:
+    def fit(
+        self,
+        system: PredictDesignSystem,
+        episodes: list[BenchmarkEpisode],
+        config: ExperimentConfig | None = None,
+    ) -> None:
         if not episodes or self.epochs <= 0:
             return
         if not getattr(system.predictor, "supports_gradient_training", True):
             return
+        cfg = config or system.config
         torch.manual_seed(self.seed)
         optimizer = torch.optim.AdamW(
             system.parameters(),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
+
+        # Warmup scheduler
+        warmup_epochs = max(1, int(self.epochs * cfg.warmup_fraction))
+        def lr_lambda(epoch: int) -> float:
+            if epoch < warmup_epochs:
+                return float(epoch + 1) / float(warmup_epochs)
+            return 1.0
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
         system.train()
-        for _ in range(self.epochs):
+        for epoch_idx in range(self.epochs):
             for episode in episodes:
-                self._fit_episode(system, episode, optimizer)
+                self._fit_episode(system, episode, optimizer, cfg)
+            scheduler.step()
 
     def _fit_episode(
         self,
         system: PredictDesignSystem,
         episode: BenchmarkEpisode,
         optimizer: torch.optim.Optimizer,
+        config: ExperimentConfig | None = None,
     ) -> None:
+        cfg = config or system.config
         system.initialize_graph(
             nodes=episode.initial_nodes,
             edges=episode.initial_edges,
@@ -81,9 +120,12 @@ class BenchmarkTrainer:
                 step_index=step_index,
                 horizon=system.config.prediction_horizon,
             )
-            loss = self._rollout_loss(system, rollout_targets)
+            loss = self._rollout_loss(system, rollout_targets, cfg)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
+            # Gradient clipping
+            if cfg.gradient_clip_norm > 0:
+                torch.nn.utils.clip_grad_norm_(system.parameters(), max_norm=cfg.gradient_clip_norm)
             optimizer.step()
             self._detach_ctdg_state(system)
 
@@ -91,9 +133,11 @@ class BenchmarkTrainer:
         self,
         system: PredictDesignSystem,
         rollout_targets: list[tuple[float, list[PredictedGraphAction]]],
+        config: ExperimentConfig | None = None,
     ) -> torch.Tensor:
         if not rollout_targets:
             return next(system.parameters()).new_tensor(0.0)
+        cfg = config or system.config
         rollout_graph = system.temporal_graph.clone()
         rollout_ctdg = system.ctdg.clone_with_graph(rollout_graph)
         total_loss = next(system.parameters()).new_tensor(0.0)
@@ -106,6 +150,7 @@ class BenchmarkTrainer:
                 ctdg=rollout_ctdg,
                 actions=actions,
                 observation_time=observation_time,
+                config=cfg,
             )
             total_weight += step_weight
             self._apply_actions(
@@ -124,7 +169,9 @@ class BenchmarkTrainer:
         ctdg,
         actions: list[PredictedGraphAction],
         observation_time: float,
+        config: ExperimentConfig | None = None,
     ) -> torch.Tensor:
+        cfg = config or system.config
         bundle = system.predictor.score_action_space(
             temporal_graph=temporal_graph,
             ctdg=ctdg,
@@ -138,7 +185,11 @@ class BenchmarkTrainer:
             GraphActionType.NO_OP: 3,
         }
         target_indices = sorted({action_targets[action.action_type] for action in actions})
-        total_loss = self._multi_target_log_loss(action_logits, target_indices)
+        # Focal loss or standard multi-target loss
+        if cfg.use_focal_loss:
+            total_loss = _focal_loss(action_logits, target_indices, gamma=cfg.focal_loss_gamma)
+        else:
+            total_loss = self._multi_target_log_loss(action_logits, target_indices)
         non_noop_count = min(
             sum(1 for action in actions if action.action_type != GraphActionType.NO_OP),
             system.config.max_actions_per_step,

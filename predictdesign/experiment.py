@@ -34,6 +34,9 @@ class PredictDesignSystem(nn.Module):
         self.message_encoder = MessageEncoder(
             context_dim=self.config.context_dim,
             hidden_dim=self.config.hidden_dim,
+            sentence_transformer_path=self.config.sentence_transformer_path,
+            sentence_transformer_dim=self.config.sentence_transformer_dim,
+            sentence_transformer_freeze=self.config.sentence_transformer_freeze,
         )
         self.message_aggregator = message_aggregator or ConcurrentMessageAggregator(
             message_encoder=self.message_encoder,
@@ -51,6 +54,9 @@ class PredictDesignSystem(nn.Module):
             hidden_dim=self.config.hidden_dim,
             role_dim=self.config.role_dim,
             role_hash_buckets=self.config.role_hash_buckets,
+            sentence_transformer_path=self.config.sentence_transformer_path,
+            sentence_transformer_dim=self.config.sentence_transformer_dim,
+            sentence_transformer_freeze=self.config.sentence_transformer_freeze,
         )
         if predictor is not None:
             self.predictor = predictor

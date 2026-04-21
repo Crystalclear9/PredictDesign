@@ -7,9 +7,12 @@ from .benchmark import (
     EpisodeStep,
     MultiAgentBenchAdapter,
 )
+from .completion import NodeCompletionClassifier
 from .config import ExperimentConfig, LLMApiConfig
 from .ctdg import ContinuousTimeDynamicGraph, StateRecord
+from .encoders import SentenceTransformerEncoder
 from .experiment import PredictDesignSystem
+from .gnn import ColdStartInitializer, RelationalAttentionLayer
 from .llm import LLMApiGraphActionPredictor
 from .messages import Message, MessageAction
 from .prediction import (
@@ -27,6 +30,7 @@ __all__ = [
     "BenchmarkEvaluator",
     "BenchmarkSplit",
     "BenchmarkTrainer",
+    "ColdStartInitializer",
     "CombinationResult",
     "ContinuousTimeDynamicGraph",
     "EpisodeStep",
@@ -38,12 +42,15 @@ __all__ = [
     "Message",
     "MessageAction",
     "MultiAgentBenchAdapter",
+    "NodeCompletionClassifier",
     "PredictedGraphAction",
     "PredictionRollout",
     "PredictionSubgraphRollout",
     "PredictDesignSystem",
     "QueryParseResult",
     "QueryParser",
+    "RelationalAttentionLayer",
+    "SentenceTransformerEncoder",
     "StateRecord",
     "TemporalEdge",
     "TemporalGraph",

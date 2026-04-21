@@ -1,161 +1,198 @@
 # PredictDesign
 
-这是一个面向“多智能体协作时序图预测”的模块化实验框架，重点是把每一层都拆开，方便你单独替换和做组合实验：
+> **v0.2.0** — 多智能体协作时序图动作预测框架，现已集成 [Relational Transformer (RT, ICLR 2026)](https://openreview.net/forum?id=rpPtgMC5s9) 架构、SentenceTransformer 文本编码、冷启动初始化和节点完成检测。
 
-- `Temporal Graph`：维护初始角色节点、上下文超节点信息、带起止时间的时序边。
-- `CTDG`：与 `Temporal Graph` 同步节点集合，并为每个节点维护历史状态 `S`。
-- `Message`：支持 `query_arrival` 和 `node_completion` 两类动作，允许只有起点、只有终点、或两端都存在。
-- `Concurrent Aggregation`：并发消息可切换为 `sum` 或 `mean` 聚合。
-- `State Updater`：同时提供 `GRU` 和 `MDP` 风格的历史状态更新器。
-- `GNN Predictor`：将节点历史状态、节点上下文、当前时序图一起编码，预测未来若干步子图动作。
-- `Empty Graph Support`：允许初始时没有节点，此时预测器会先在 `add_node/no_op` 之间选择。
-- `Temporal Edge Encoding`：边的 `start_time/end_time` 会被编码成显式边特征送入 GNN，而不只是简单二值邻接。
+---
+
+## 核心能力
+
+| 模块 | 描述 |
+|------|------|
+| **Temporal Graph** | 带起止时间的时序边 + 角色/上下文节点 |
+| **CTDG** | 每节点维护历史状态，支持并发消息聚合（sum/mean）|
+| **State Updater** | `GRU` / `MDP` 两种可切换的状态更新器 |
+| **Relational Transformer** ⭐ | 四种注意力掩码（role/neighbor/full/feature）+ GatedMLP + RMSNorm |
+| **SentenceTransformer 编码** ⭐ | 冻结 MiniLMv2 + 可训练投影层替代 hash 编码 |
+| **Cold Start** ⭐ | 空图时的角色原型 + 任务嵌入 + 初始边权先验 |
+| **Completion Detection** ⭐ | 每节点轻量二分类器，判断 agent 输出是否结束 |
+| **Focal Loss + Warmup** ⭐ | 训练时支持焦点损失、梯度裁剪、线性 warmup |
+| **LLM API Predictor** | 可用 LLM API 替换 GNN 做预测 |
+
+⭐ v0.2.0 新增
+
+---
 
 ## 目录结构
 
 ```text
 PredictDesign/
 ├── predictdesign/
-│   ├── aggregation.py
-│   ├── config.py
-│   ├── ctdg.py
-│   ├── encoders.py
-│   ├── experiment.py
+│   ├── __init__.py               # 公开 API
+│   ├── config.py                 # ExperimentConfig（所有超参）
+│   ├── experiment.py             # PredictDesignSystem（顶层门面）
+│   ├── temporal_graph.py         # TemporalGraph / TemporalNode / TemporalEdge
+│   ├── ctdg.py                   # ContinuousTimeDynamicGraph
+│   ├── encoders.py               # SentenceTransformerEncoder / NodeFeatureEncoder
+│   ├── completion.py             # NodeCompletionClassifier ⭐
+│   ├── aggregation.py            # ConcurrentMessageAggregator
+│   ├── messages.py               # Message / MessageAction
+│   ├── prediction.py             # PredictedGraphAction / PredictionRollout
+│   ├── query_parser.py           # QueryParser（自然语言→初始图）
+│   ├── types.py
 │   ├── gnn/
-│   ├── messages.py
-│   ├── prediction.py
-│   ├── state_update/
-│   ├── temporal_graph.py
-│   └── types.py
+│   │   ├── layers.py             # RelationalAttentionLayer / GNNBackbone ⭐
+│   │   ├── cold_start.py         # ColdStartInitializer ⭐
+│   │   └── predictor.py          # GraphActionPredictor
+│   ├── state_update/             # GRUStateUpdater / MDPStateUpdater
+│   ├── benchmark/                # BenchmarkTrainer / BenchmarkEvaluator
+│   └── llm/                      # LLMApiGraphActionPredictor
 ├── examples/
-│   └── minimal_demo.py
-└── tests/
-    └── test_predictdesign.py
+│   ├── minimal_demo.py           # 基础 GNN 用法
+│   └── rt_demo.py                # RT + 冷启动 + 完成检测示例 ⭐
+├── scripts/                      # 评测脚本（MultiAgentBench）
+├── results/                      # 运行结果
+├── tests/
+│   └── test_predictdesign.py
+└── pyproject.toml
 ```
 
-## 设计要点
+---
 
-### 1. Temporal Graph
+## 快速安装
 
-- 每个节点 `TemporalNode` 同时包含：
-  - `role`
-  - `context`
-- 每条边 `TemporalEdge` 包含：
-  - `source_node_id`
-  - `target_node_id`
-  - `start_time`
-  - `end_time`
+```bash
+pip install -e .
+# 首次运行会自动下载 all-MiniLM-L6-v2（约 90MB）
+```
 
-### 2. CTDG 与消息更新
+依赖：`torch>=2.0`，`sentence-transformers>=2.2.0`
 
-- `ContinuousTimeDynamicGraph` 初始化时与 `TemporalGraph` 节点完全一致。
-- 每个节点都维护：
-  - `current_states[node_id]`
-  - `state_history[node_id]`
-- 消息按时间排序后逐时间戳更新。
-- 同一时间戳下，触达同一节点的消息先聚合，再更新状态。
-- 聚合方式通过 `ExperimentConfig.concurrent_update_mode` 控制：
-  - `sum`
-  - `mean`
+---
 
-### 3. 状态更新模块
+## 快速上手
 
-- `GRUStateUpdater`
-  - 用 `previous_state + current_context + aggregated_message` 更新隐藏状态。
-- `MDPStateUpdater`
-  - 将更新过程建模为离散潜在状态转移，再输出期望状态表示。
-
-可通过 `ExperimentConfig.state_updater_type` 切换：
+### 最简配置（向下兼容）
 
 ```python
-ExperimentConfig(state_updater_type="gru")
-ExperimentConfig(state_updater_type="mdp")
+from predictdesign import ExperimentConfig, PredictDesignSystem
+
+system = PredictDesignSystem(config=ExperimentConfig(
+    gnn_type="graphsage",
+    candidate_new_roles=("planner", "coder", "reviewer"),
+))
+rollout = system.predict_next_steps(observation_time=1.0, steps=3)
 ```
 
-### 4. GNN 预测模块
-
-当前提供三种可切换的 GNN backbone：
-
-- `gcn`
-- `graphsage`
-- `gat`
-
-可通过 `ExperimentConfig.gnn_type` 切换：
-
-```python
-ExperimentConfig(gnn_type="gcn")
-ExperimentConfig(gnn_type="graphsage")
-ExperimentConfig(gnn_type="gat")
-```
-
-预测动作类型包括：
-
-- `create_edge`
-- `remove_edge`
-- `add_node`
-- `no_op`
-
-当预测为 `add_node` 时：
-
-- `Temporal Graph` 新增一个已知角色、空 context 的节点
-- `CTDG` 新增一个历史状态为零的节点
-
-此外，当前版本补充了两点之前容易缺失的实验能力：
-
-- 当初始图为空时，GNN 会退化到一个图级空状态嵌入，不会因为 `torch.stack([])` 报错。
-- 时序边特征默认编码为 4 维：
-  - `is_active`
-  - `log(1 + duration)`
-  - `log(1 + elapsed_since_start)`
-  - `log(1 + remaining_until_end)`
-
-### 5. MDP 状态更新模块
-
-`MDPStateUpdater` 现在不只是一个“像马尔可夫”的更新层，而是显式拆成了：
-
-- `policy_model`：给出潜在动作分布
-- `transition_model`：给出 `action -> next_state` 转移分布
-- `value_model`：给出当前状态值估计
-- `step(...)`：同时返回下一个状态和一份 `MDPTransitionSummary`
-
-这样你后面做 GRU/MDP 对比实验时，可以直接分析策略分布和转移矩阵，而不只是看最后的 hidden state。
-
-## 最小示例
+### RT + 冷启动（推荐）
 
 ```python
 from predictdesign import ExperimentConfig, PredictDesignSystem
 
 config = ExperimentConfig(
-    context_dim=8,
-    hidden_dim=16,
-    concurrent_update_mode="mean",
-    state_updater_type="gru",
-    gnn_type="graphsage",
-    prediction_horizon=3,
-    candidate_new_roles=("planner", "coder", "reviewer"),
+    gnn_type="relational_transformer",   # RT backbone
+    rt_num_heads=4,
+    use_cold_start=True,                 # 空图冷启动
+    use_completion_detection=True,       # 节点完成检测
+    use_focal_loss=True,                 # 训练用焦点损失
+    gradient_clip_norm=1.0,
+    candidate_new_roles=("planner", "coder", "reviewer", "tool"),
 )
-
 system = PredictDesignSystem(config=config)
+
+# 冷启动：空图时仍可预测 ADD_NODE
+rollout = system.predict_next_steps(observation_time=0.0, steps=1)
+print(rollout.actions[0].action_type)  # GraphActionType.ADD_NODE
 ```
 
-更完整的可运行例子见 [examples/minimal_demo.py](/data0/fanjiarun/PredictDesign/examples/minimal_demo.py)。
+完整可运行示例见 [`examples/rt_demo.py`](examples/rt_demo.py)。
 
-## 运行方式
+---
 
-当前机器里系统 `python` 没有安装 `torch`，建议直接用已有环境：
+## 模型架构（v0.2.0）
+
+```
+文本/上下文
+    ↓ SentenceTransformerEncoder（冻结 MiniLMv2 + 可训练 Linear）
+节点特征 ──────────────┐
+角色嵌入（hash）       │
+时间编码               │
+上下文维度             ↓
+              NodeFeatureEncoder → [N, D]
+                        ↓
+          RelationalAttentionLayer × L
+          ├── Role Attention     （同角色节点）
+          ├── Neighbor Attention  （有边相连的节点）
+          ├── Full Attention      （全节点）
+          └── Feature Attention   （cosine top-k neighbour）
+          + GatedMLP (SiLU) + RMSNorm (pre-norm)
+                        ↓
+            Attention Pooling → graph_embedding [D]
+            ├── add_node_head      → 角色分布
+            ├── action_count_head → 动作数量
+            └── no_op_head
+                        ↓
+      NodeCompletionClassifier → completion_scores [N] ∈ [0,1]
+      （影响 CREATE_EDGE 的 source 评分）
+```
+
+### 冷启动路径
+
+空图（无节点）时：
+1. `ColdStartInitializer.graph_embedding_cold()` 返回任务感知的图级嵌入，不再退化到零向量
+2. 预测头仍能正常预测 `ADD_NODE`
+3. ADD_NODE 执行后，新节点 CTDG 状态由角色原型初始化（非零）
+
+---
+
+## 配置参数速查
+
+```python
+ExperimentConfig(
+    # --- 架构 ---
+    gnn_type = "relational_transformer",  # "gcn" | "graphsage" | "gat" | "relational_transformer"
+    rt_num_heads = 4,
+    rt_num_layers = 2,                    # 同 gnn_layers
+    rt_dropout = 0.1,
+
+    # --- SentenceTransformer ---
+    sentence_transformer_path = "all-MiniLM-L6-v2",  # 或本地路径
+    sentence_transformer_dim = 384,
+    sentence_transformer_freeze = True,
+
+    # --- 冷启动 ---
+    use_cold_start = True,
+
+    # --- 完成检测 ---
+    use_completion_detection = True,
+
+    # --- 训练 ---
+    use_focal_loss = True,
+    focal_loss_gamma = 2.0,
+    gradient_clip_norm = 1.0,
+    warmup_fraction = 0.1,
+
+    # --- 状态更新 ---
+    state_updater_type = "gru",   # "gru" | "mdp"
+    concurrent_update_mode = "mean",  # "sum" | "mean"
+)
+```
+
+---
+
+## 运行测试
 
 ```bash
-cd /data0/fanjiarun/PredictDesign
-conda run -n benchmark python examples/minimal_demo.py
-conda run -n benchmark python -m unittest discover -s tests
+# 直接用 Python（规避 hydra/antlr 版本冲突）
+python -c "import predictdesign; print('OK')"
+python examples/rt_demo.py
+python examples/minimal_demo.py
 ```
 
-说明：当前实现是“可训练的实验骨架”，不是已经训练好的模型，所以初始直接运行时，预测动作可能偏向 `no_op`，这是正常现象；需要你后续接入数据和训练流程后，预测头才会学到更有意义的动作分布。
+---
 
-## 后续建议
+## 后续扩展建议
 
-这个版本优先解决“可组合、可替换、可跑通”：
-
-- 如果你后续想接入文本 context，可以把 `context` 向量替换成 LLM encoder 输出。
-- 如果你想把 GNN 换成 PyG/DGL 实现，现在只需要替换 `predictdesign/gnn/`。
-- 如果你想尝试更复杂的消息机制，可以替换 `MessageEncoder` 或 `ConcurrentMessageAggregator`。
+- **接入自定义 ST 模型**：将 `sentence_transformer_path` 改为本地路径
+- **替换 GNN**：只需在 `gnn/layers.py` 里新增一个 `nn.Module` 并在 `GNNBackbone` 注册
+- **接入 LLM**：设置 `gnn_type="llm_api"` 并传入 `llm_completion_fn`
+- **做消融实验**：通过 `ExperimentConfig` 字段独立开关每个模块

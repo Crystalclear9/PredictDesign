@@ -7,8 +7,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..completion import NodeCompletionClassifier
 from ..config import ExperimentConfig
 from ..ctdg import ContinuousTimeDynamicGraph
+from ..encoders import SentenceTransformerEncoder, stable_hash_index
 from ..messages import Message
 from ..prediction import (
     GraphActionType,
@@ -18,6 +20,7 @@ from ..prediction import (
 )
 from ..temporal_graph import TemporalEdge, TemporalGraph, TemporalNode
 from ..types import ensure_tensor
+from .cold_start import ColdStartInitializer
 from .layers import GNNBackbone
 
 
@@ -34,6 +37,7 @@ class ActionScoreBundle:
     count_logits: torch.Tensor
     no_op_logit: torch.Tensor
     graph_embedding: torch.Tensor
+    completion_scores: torch.Tensor | None = None
 
 
 class GraphActionPredictor(nn.Module):
@@ -47,6 +51,8 @@ class GraphActionPredictor(nn.Module):
             hidden_dim=config.hidden_dim,
             num_layers=config.gnn_layers,
             edge_feature_dim=config.temporal_edge_dim,
+            num_heads=config.rt_num_heads,
+            dropout=config.rt_dropout,
         )
         self.create_source = nn.Linear(config.hidden_dim, config.hidden_dim, bias=False)
         self.create_target = nn.Linear(config.hidden_dim, config.hidden_dim, bias=False)
@@ -77,6 +83,49 @@ class GraphActionPredictor(nn.Module):
         self.no_op_head = nn.Linear(config.hidden_dim, 1)
         self.empty_graph_embedding = nn.Parameter(torch.zeros(config.hidden_dim))
 
+        # Attention pooling for graph-level embedding
+        self.attn_pool_query = nn.Parameter(torch.randn(config.hidden_dim) * 0.02)
+        self.attn_pool_key = nn.Linear(config.hidden_dim, config.hidden_dim, bias=False)
+
+        # Cold start initializer
+        self._text_encoder_for_cold_start: SentenceTransformerEncoder | None = None
+        if config.use_cold_start:
+            self._text_encoder_for_cold_start = SentenceTransformerEncoder(
+                output_dim=config.sentence_transformer_dim,
+                model_name_or_path=config.sentence_transformer_path,
+                st_dim=config.sentence_transformer_dim,
+                freeze=config.sentence_transformer_freeze,
+            )
+            self.cold_start = ColdStartInitializer(
+                candidate_roles=config.candidate_new_roles,
+                hidden_dim=config.hidden_dim,
+                text_encoder=self._text_encoder_for_cold_start,
+                st_dim=config.sentence_transformer_dim,
+            )
+        else:
+            self.cold_start = None
+
+        # Completion classifier
+        if config.use_completion_detection:
+            self.completion_classifier = NodeCompletionClassifier(config.hidden_dim)
+        else:
+            self.completion_classifier = None
+
+    def _build_role_indices(
+        self,
+        node_order: list[str],
+        temporal_graph: TemporalGraph,
+    ) -> torch.Tensor:
+        """Build integer role index tensor for RelationalAttentionLayer."""
+        role_to_idx: dict[str, int] = {}
+        indices: list[int] = []
+        for node_id in node_order:
+            role = temporal_graph.nodes[node_id].role
+            if role not in role_to_idx:
+                role_to_idx[role] = len(role_to_idx)
+            indices.append(role_to_idx[role])
+        return torch.tensor(indices, dtype=torch.long, device=self.device)
+
     def encode_graph(
         self,
         temporal_graph: TemporalGraph,
@@ -91,11 +140,16 @@ class GraphActionPredictor(nn.Module):
                 dtype=torch.float32,
                 device=self.device,
             )
-            empty_embeddings = torch.zeros(
-                (0, self.config.hidden_dim),
-                dtype=torch.float32,
-                device=self.device,
-            )
+            # Cold-start: use initializer if available
+            if self.cold_start is not None:
+                cold_embedding = self.cold_start.graph_embedding_cold(device=self.device)
+                empty_embeddings = cold_embedding.unsqueeze(0)  # [1, D]
+            else:
+                empty_embeddings = torch.zeros(
+                    (0, self.config.hidden_dim),
+                    dtype=torch.float32,
+                    device=self.device,
+                )
             return node_order, empty_matrix, empty_edge_features, empty_embeddings
         features = torch.stack(
             [
@@ -131,13 +185,26 @@ class GraphActionPredictor(nn.Module):
             temporal_graph=temporal_graph,
             ctdg=ctdg,
         )
-        encoded = self.gnn_backbone(features, message_passing_adjacency, edge_features)
+        # Build role indices for RT
+        role_indices = self._build_role_indices(node_order, temporal_graph)
+        encoded = self.gnn_backbone(
+            features, message_passing_adjacency, edge_features, role_indices=role_indices,
+        )
         return node_order, active_adjacency, edge_features, encoded
 
     def graph_embedding_from_encoded(self, node_embeddings: torch.Tensor) -> torch.Tensor:
         if node_embeddings.numel() == 0:
+            if self.cold_start is not None:
+                return self.graph_projection(
+                    self.cold_start.graph_embedding_cold(device=self.device)
+                )
             return self.graph_projection(self.empty_graph_embedding)
-        return self.graph_projection(node_embeddings.mean(dim=0))
+        # Attention pooling (learned query attends to node embeddings)
+        keys = self.attn_pool_key(node_embeddings)  # [N, D]
+        attn_scores = (keys @ self.attn_pool_query) / math.sqrt(self.config.hidden_dim)  # [N]
+        attn_weights = torch.softmax(attn_scores, dim=0)  # [N]
+        pooled = (attn_weights.unsqueeze(-1) * node_embeddings).sum(dim=0)  # [D]
+        return self.graph_projection(pooled)
 
     def predict_next_action(
         self,
@@ -203,22 +270,41 @@ class GraphActionPredictor(nn.Module):
             observation_time=observation_time,
         )
         graph_embedding = self.graph_embedding_from_encoded(node_embeddings)
-        create_scores = (
-            self.create_source(node_embeddings) @ self.create_target(node_embeddings).T
-            + self.create_edge_bias(edge_features).squeeze(-1)
-        )
-        remove_scores = (
-            self.remove_source(node_embeddings) @ self.remove_target(node_embeddings).T
-            + self.remove_edge_bias(edge_features).squeeze(-1)
-        )
+
+        # Number of actual nodes (cold start may add virtual embeddings)
+        n_actual = len(node_order)
+
+        # Use only actual node embeddings for edge scoring
+        actual_embeddings = node_embeddings[:n_actual] if node_embeddings.size(0) > n_actual else node_embeddings
+
+        # Handle empty graph edge scoring
+        if n_actual == 0 or adjacency.numel() == 0:
+            create_scores = torch.zeros((0, 0), dtype=torch.float32, device=self.device)
+            remove_scores = torch.zeros((0, 0), dtype=torch.float32, device=self.device)
+        else:
+            create_scores = (
+                self.create_source(actual_embeddings) @ self.create_target(actual_embeddings).T
+                + self.create_edge_bias(edge_features).squeeze(-1)
+            )
+            remove_scores = (
+                self.remove_source(actual_embeddings) @ self.remove_target(actual_embeddings).T
+                + self.remove_edge_bias(edge_features).squeeze(-1)
+            )
+
         create_valid_mask = adjacency == 0
         remove_valid_mask = adjacency > 0
-        pair_features = self._pair_feature_tensor(node_embeddings, edge_features)
+        pair_features = self._pair_feature_tensor(actual_embeddings, edge_features)
         relation_logits = self.relation_pair_head(pair_features)
         relation_logits = relation_logits + self._relation_role_priors(
             node_order=node_order,
             temporal_graph=temporal_graph,
         )
+
+        # Completion detection
+        completion_scores: torch.Tensor | None = None
+        if self.completion_classifier is not None and n_actual > 0:
+            completion_scores = self.completion_classifier(actual_embeddings)  # [N]
+
         return ActionScoreBundle(
             node_order=node_order,
             adjacency=adjacency,
@@ -231,6 +317,7 @@ class GraphActionPredictor(nn.Module):
             count_logits=self.action_count_head(graph_embedding),
             no_op_logit=self.no_op_head(graph_embedding).view(()),
             graph_embedding=graph_embedding,
+            completion_scores=completion_scores,
         )
 
     def action_type_logits(self, score_bundle: ActionScoreBundle) -> torch.Tensor:
@@ -373,6 +460,10 @@ class GraphActionPredictor(nn.Module):
                 )
             )
             ctdg.add_node(node_id)
+            # Cold-start: initialize with role prototype instead of zero
+            if self.cold_start is not None:
+                init_state = self.cold_start.initialize_state(role, device=self.device)
+                ctdg.current_states[node_id] = init_state.detach()
             if update_state:
                 generated_message = Message.build_query_message(
                     target_node_id=node_id,
@@ -428,11 +519,21 @@ class GraphActionPredictor(nn.Module):
     ) -> list[PredictedGraphAction]:
         candidates: list[PredictedGraphAction] = []
         type_log_probs = torch.log_softmax(action_logits, dim=0)
+
+        # Apply completion-aware score adjustment to create_scores
+        adjusted_create_scores = score_bundle.create_scores
+        if score_bundle.completion_scores is not None and adjusted_create_scores.numel() > 0:
+            # Completed nodes are more likely to be sources (they're done, can delegate)
+            # Incomplete nodes get penalized as sources
+            completion = score_bundle.completion_scores  # [N]
+            source_bonus = (completion * 2.0 - 1.0).unsqueeze(1)  # [N, 1]
+            adjusted_create_scores = adjusted_create_scores + source_bonus
+
         candidates.extend(
             self._edge_candidates(
                 action_type=GraphActionType.CREATE_EDGE,
                 node_order=score_bundle.node_order,
-                scores=score_bundle.create_scores,
+                scores=adjusted_create_scores,
                 valid_mask=score_bundle.create_valid_mask,
                 relation_logits=score_bundle.relation_logits,
                 effective_time=effective_time,

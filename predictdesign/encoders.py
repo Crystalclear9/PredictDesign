@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 
 import torch
 from torch import nn
@@ -49,87 +48,114 @@ class TimeEncoder(nn.Module):
         return self.projection(raw)
 
 
-class TextSemanticEncoder(nn.Module):
-    def __init__(self, output_dim: int, bucket_count: int = 512) -> None:
+class SentenceTransformerEncoder(nn.Module):
+    """Encode text using a frozen SentenceTransformer (MiniLMv2 by default, matching RT paper).
+
+    ``model_name_or_path`` accepts either a HuggingFace model name (will be
+    downloaded on first use) **or** a local absolute path to pre-downloaded
+    weights so the system can work fully offline.
+    """
+
+    def __init__(
+        self,
+        output_dim: int,
+        model_name_or_path: str = "all-MiniLM-L6-v2",
+        st_dim: int = 384,
+        freeze: bool = True,
+    ) -> None:
         super().__init__()
         self.output_dim = output_dim
-        self.bucket_count = bucket_count
-        self.extra_feature_dim = 16
+        self.st_dim = st_dim
+        self._model_path = model_name_or_path
+        self._freeze = freeze
+        self._st_model: object | None = None  # lazy-loaded
+
+        # Projection from ST embedding dim to hidden_dim
         self.projection = nn.Sequential(
-            nn.Linear(bucket_count + self.extra_feature_dim, output_dim),
-            nn.ReLU(),
+            nn.Linear(st_dim, output_dim),
+            nn.SiLU(),
             nn.Linear(output_dim, output_dim),
         )
-        self.keyword_groups = {
-            "coordination": ("plan", "planner", "delegate", "assign", "coordinate", "task"),
-            "analysis": ("analyze", "analysis", "reason", "evidence", "infer", "inspect"),
-            "discussion": ("discussion", "speak", "speech", "communicate", "talk", "summary"),
-            "research": ("research", "paper", "experiment", "baseline", "dataset", "metric"),
-            "werewolf": ("werewolf", "wolf", "villager", "witch", "seer", "guard"),
-            "decision": ("vote", "banish", "attack", "check", "protect", "save", "poison"),
-        }
 
-    def forward(self, text: str, device: torch.device | str) -> torch.Tensor:
-        vector = self._vectorize(text, torch.device(device))
-        return self.projection(vector)
+        # Lightweight fallback for environments without sentence-transformers
+        self._fallback_hash_dim = st_dim
+        self._use_fallback = False
 
-    def _vectorize(self, text: str, device: torch.device) -> torch.Tensor:
-        normalized = str(text or "").strip().lower()
-        vector = torch.zeros(
-            self.bucket_count + self.extra_feature_dim,
-            dtype=torch.float32,
-            device=device,
-        )
-        if not normalized:
+    def _ensure_model(self) -> None:
+        if self._st_model is not None:
+            return
+        try:
+            from sentence_transformers import SentenceTransformer
+
+            self._st_model = SentenceTransformer(self._model_path)
+            if self._freeze:
+                for param in self._st_model.parameters():
+                    param.requires_grad = False
+            self._use_fallback = False
+        except (ImportError, OSError):
+            self._use_fallback = True
+
+    def _fallback_encode(self, text: str, device: torch.device) -> torch.Tensor:
+        """Hash-based fallback when sentence-transformers is unavailable."""
+        vector = torch.zeros(self._fallback_hash_dim, dtype=torch.float32, device=device)
+        if not text or not text.strip():
             return vector
-        tokens = re.findall(r"[a-z0-9_]+", normalized)
-        compact = re.sub(r"\s+", " ", normalized)
-
-        def add_feature(feature: str, weight: float) -> None:
-            digest = hashlib.sha256(feature.encode("utf-8")).digest()
-            index = int.from_bytes(digest[:8], "big") % self.bucket_count
+        normalized = text.strip().lower()
+        tokens = normalized.split()
+        for i, token in enumerate(tokens[:128]):
+            digest = hashlib.sha256(token.encode("utf-8")).digest()
+            idx = int.from_bytes(digest[:8], "big") % self._fallback_hash_dim
             sign = 1.0 if digest[8] % 2 == 0 else -1.0
-            vector[index] += sign * weight
-
-        for token in tokens:
-            add_feature(f"tok:{token}", 1.0)
-        for left, right in zip(tokens, tokens[1:]):
-            add_feature(f"bigram:{left}|{right}", 0.8)
-        for idx in range(max(len(compact) - 2, 0)):
-            add_feature(f"tri:{compact[idx:idx + 3]}", 0.25)
-
-        extra_offset = self.bucket_count
-        for keyword_index, keywords in enumerate(self.keyword_groups.values()):
-            vector[extra_offset + keyword_index] = min(
-                1.0,
-                sum(1 for keyword in keywords if keyword in normalized) / max(len(keywords), 1),
-            )
-        vector[extra_offset + 6] = min(len(tokens) / 128.0, 1.0)
-        vector[extra_offset + 7] = min(len(compact) / 2048.0, 1.0)
-        vector[extra_offset + 8] = compact.count("?") / max(len(compact), 1)
-        vector[extra_offset + 9] = compact.count(":") / max(len(compact), 1)
-        vector[extra_offset + 10] = compact.count("!") / max(len(compact), 1)
-        vector[extra_offset + 11] = sum(token.isdigit() for token in tokens) / max(len(tokens), 1)
-        vector[extra_offset + 12] = sum(token.isupper() for token in tokens) / max(len(tokens), 1)
-        vector[extra_offset + 13] = min(len(set(tokens)) / max(len(tokens), 1), 1.0)
-        vector[extra_offset + 14] = min(compact.count("\n") / 16.0, 1.0)
-        vector[extra_offset + 15] = 1.0
+            vector[idx] += sign * 1.0
         norm = vector.norm(p=2)
         if float(norm.item()) > 0:
             vector = vector / norm
         return vector
 
+    def forward(self, text: str, device: torch.device | str) -> torch.Tensor:
+        device = torch.device(device)
+        self._ensure_model()
+
+        if self._use_fallback:
+            raw_embedding = self._fallback_encode(text, device)
+        else:
+            # SentenceTransformer.encode() internally uses torch.inference_mode(),
+            # so we must .clone() to break out of that context before passing
+            # through our trainable projection layer.
+            embedding = self._st_model.encode(
+                text or "",
+                convert_to_tensor=True,
+                show_progress_bar=False,
+            )
+            raw_embedding = embedding.to(device=device, dtype=torch.float32).clone()
+
+        return self.projection(raw_embedding)
+
 
 class NodeFeatureEncoder(nn.Module):
-    def __init__(self, context_dim: int, hidden_dim: int, role_dim: int, role_hash_buckets: int) -> None:
+    def __init__(
+        self,
+        context_dim: int,
+        hidden_dim: int,
+        role_dim: int,
+        role_hash_buckets: int,
+        sentence_transformer_path: str = "all-MiniLM-L6-v2",
+        sentence_transformer_dim: int = 384,
+        sentence_transformer_freeze: bool = True,
+    ) -> None:
         super().__init__()
         self.role_encoder = RoleEncoder(role_dim=role_dim, bucket_count=role_hash_buckets)
-        self.text_encoder = TextSemanticEncoder(output_dim=hidden_dim)
+        self.text_encoder = SentenceTransformerEncoder(
+            output_dim=hidden_dim,
+            model_name_or_path=sentence_transformer_path,
+            st_dim=sentence_transformer_dim,
+            freeze=sentence_transformer_freeze,
+        )
         self.context_projection = nn.Linear(context_dim, hidden_dim)
         self.state_projection = nn.Linear(hidden_dim, hidden_dim)
         self.output_projection = nn.Sequential(
             nn.Linear(hidden_dim * 7 + role_dim, hidden_dim),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
 
@@ -161,11 +187,23 @@ class NodeFeatureEncoder(nn.Module):
 
 
 class MessageEncoder(nn.Module):
-    def __init__(self, context_dim: int, hidden_dim: int) -> None:
+    def __init__(
+        self,
+        context_dim: int,
+        hidden_dim: int,
+        sentence_transformer_path: str = "all-MiniLM-L6-v2",
+        sentence_transformer_dim: int = 384,
+        sentence_transformer_freeze: bool = True,
+    ) -> None:
         super().__init__()
         self.hidden_dim = hidden_dim
         self.context_dim = context_dim
-        self.text_encoder = TextSemanticEncoder(output_dim=hidden_dim)
+        self.text_encoder = SentenceTransformerEncoder(
+            output_dim=hidden_dim,
+            model_name_or_path=sentence_transformer_path,
+            st_dim=sentence_transformer_dim,
+            freeze=sentence_transformer_freeze,
+        )
         self.relation_encoder = RoleEncoder(role_dim=hidden_dim, bucket_count=257)
         self.action_to_index = {action: idx for idx, action in enumerate(MessageAction)}
         self.action_embedding = nn.Embedding(len(MessageAction), hidden_dim)
@@ -174,7 +212,7 @@ class MessageEncoder(nn.Module):
         self.direction_projection = nn.Linear(4, hidden_dim)
         self.output_projection = nn.Sequential(
             nn.Linear(hidden_dim * 10, hidden_dim),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
 
