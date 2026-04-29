@@ -20,11 +20,24 @@ def _load_report(path: Path) -> list[dict[str, Any]] | None:
 
 
 def _format_markdown_table(title: str, rows: list[dict[str, Any]]) -> str:
+    hit_ks = rows[0].get("hit_ks", [1, 3, 5]) if rows else [1, 3, 5]
+    hit_ks = [int(value) for value in hit_ks]
     lines = [
         f"## {title}",
         "",
-        "| Aggregation | State | GNN | Horizon-Subgraph Step Acc | One-Step Acc | Rollout Exact Acc | Rollout Subgraph Acc | Subgraph P | Subgraph R | Subgraph F1 | Correct / Total |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        (
+            "| Aggregation | State | GNN | "
+            + " | ".join(f"Hit@{hit_k}" for hit_k in hit_ks)
+            + " | "
+            + " | ".join(f"One-Step Hit@{hit_k}" for hit_k in hit_ks)
+            + " | Rollout Exact Acc | Rollout Subgraph Acc | Subgraph P | Subgraph R | Subgraph F1 | Top1 Hits / Total |"
+        ),
+        (
+            "|---|---|---|"
+            + "---:|" * len(hit_ks)
+            + "---:|" * len(hit_ks)
+            + "---:|---:|---:|---:|---:|---:|"
+        ),
     ]
     ordered = sorted(
         rows,
@@ -35,8 +48,16 @@ def _format_markdown_table(title: str, rows: list[dict[str, Any]]) -> str:
         ),
     )
     for item in ordered:
-        accuracy = f'{float(item["accuracy"]):.4f}'
-        one_step_accuracy = f'{float(item.get("one_step_accuracy", 0.0)):.4f}'
+        hit_at_k = item.get("hit_at_k", {})
+        one_step_hit_at_k = item.get("one_step_hit_at_k", {})
+        hit_values = [
+            f'{float(hit_at_k.get(str(hit_k), item.get("accuracy", 0.0))):.4f}'
+            for hit_k in hit_ks
+        ]
+        one_step_hit_values = [
+            f'{float(one_step_hit_at_k.get(str(hit_k), item.get("one_step_accuracy", 0.0))):.4f}'
+            for hit_k in hit_ks
+        ]
         rollout_exact_accuracy = f'{float(item.get("rollout_exact_accuracy", 0.0)):.4f}'
         rollout_subgraph_accuracy = f'{float(item.get("rollout_subgraph_accuracy", 0.0)):.4f}'
         subgraph_precision = f'{float(item.get("subgraph_precision", 0.0)):.4f}'
@@ -44,7 +65,11 @@ def _format_markdown_table(title: str, rows: list[dict[str, Any]]) -> str:
         subgraph_f1 = f'{float(item.get("subgraph_f1", 0.0)):.4f}'
         ratio = f'{item["correct_steps"]} / {item["total_steps"]}'
         lines.append(
-            f'| {item["message_reduce"]} | {item["state_updater"]} | {item["gnn_type"]} | {accuracy} | {one_step_accuracy} | {rollout_exact_accuracy} | {rollout_subgraph_accuracy} | {subgraph_precision} | {subgraph_recall} | {subgraph_f1} | {ratio} |'
+            f'| {item["message_reduce"]} | {item["state_updater"]} | {item["gnn_type"]} | '
+            + " | ".join(hit_values)
+            + " | "
+            + " | ".join(one_step_hit_values)
+            + f" | {rollout_exact_accuracy} | {rollout_subgraph_accuracy} | {subgraph_precision} | {subgraph_recall} | {subgraph_f1} | {ratio} |"
         )
     lines.append("")
     return "\n".join(lines)
@@ -57,7 +82,7 @@ def _render_combined_markdown(reports: dict[str, list[dict[str, Any]]]) -> str:
             grouped[item["dataset_name"]].append(item)
 
     lines = [
-        "# PredictDesign Full-Fidelity Accuracy Tables",
+        "# PredictDesign Full-Fidelity Hit@K Tables",
         "",
         f"Generated at: {_now_iso()}",
         "",

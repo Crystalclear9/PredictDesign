@@ -1,0 +1,93 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "seer",
+            "wolf",
+            "villager",
+            "villager",
+            "guard",
+            "wolf",
+            "witch",
+            "wolf",
+            "villager"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 7.700000000000003,
+            "details": [
+                "Werewolf Vera was banished. +2 points.",
+                "Villager Jose voted for villager Kenneth. -0.1 points.",
+                "Villager Kenneth voted for werewolf Vera. +0.2 points.",
+                "Villager Michael voted for werewolf Vera. +0.2 points.",
+                "Villager Rose voted for werewolf Vera. +0.2 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Doris",
+                    "description": "Guard successfully protected Doris from werewolf attack."
+                },
+                "Witch killed non-werewolf Kenneth with poison. -2 points.",
+                "Day 2: Seer Doris survived. +1 point.",
+                "Villager Robin voted for villager Guard. -0.1 points.",
+                "Villager Michael voted for villager Rose. -0.1 points.",
+                "Villager Rose voted for werewolf Vera. +0.2 points.",
+                "Day 3: Seer Doris survived. +1 point.",
+                "Villager Robin voted for villager Doris. -0.1 points.",
+                "Day 4: Seer Doris survived. +1 point.",
+                "Villager Jose voted for werewolf Joseph. +0.2 points.",
+                "Villager Robin voted for villager Doris. -0.1 points.",
+                "Villager Rose voted for villager Doris. -0.1 points.",
+                "Villager Jose voted for villager Rose. -0.1 points.",
+                "Villager Robin voted for villager Rose. -0.1 points.",
+                "Werewolf Joseph was banished. +2 points.",
+                "Villager Jose voted for werewolf Joseph. +0.2 points.",
+                "Villager Robin voted for werewolf Joseph. +0.2 points.",
+                "Villager Robin voted for villager Robin. -0.1 points.",
+                "Villager Robin voted for werewolf April. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Doris was banished. Werewolves +1 point.",
+                "Non-werewolf Rose was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": -1,
+    "surviving_players": [
+        {
+            "player_id": "April",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

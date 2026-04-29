@@ -1,0 +1,91 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "villager",
+            "witch",
+            "villager",
+            "wolf",
+            "wolf",
+            "guard",
+            "wolf",
+            "seer"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 15.1,
+            "details": [
+                "Villager Ronald voted for villager Miguel. -0.1 points.",
+                "Villager Vanessa voted for villager Maria. -0.1 points.",
+                "Villager Evan voted for villager Miguel. -0.1 points.",
+                "Day 2: Seer Evan survived. +1 point.",
+                "Werewolf Patricia was banished. +2 points.",
+                "Villager Miguel voted for werewolf Patricia. +0.2 points.",
+                "Villager Maria voted for werewolf Patricia. +0.2 points.",
+                "Villager Eric voted for werewolf Patricia. +0.2 points.",
+                "Villager Vanessa voted for werewolf Patricia. +0.2 points.",
+                "Villager Evan voted for werewolf Patricia. +0.2 points.",
+                "Day 3: Seer Evan survived. +1 point.",
+                "Werewolf Patricia was banished. +2 points.",
+                "Villager Miguel voted for villager Maria. -0.1 points.",
+                "Villager Eric voted for werewolf Patricia. +0.2 points.",
+                "Villager Vanessa voted for werewolf Patricia. +0.2 points.",
+                "Villager Evan voted for werewolf Patricia. +0.2 points.",
+                "Day 4: Seer Evan survived. +1 point.",
+                "Werewolf Mae was banished. +2 points.",
+                "Villager Miguel voted for werewolf Mae. +0.2 points.",
+                "Villager Eric voted for werewolf Adele. +0.2 points.",
+                "Villager Evan voted for villager Miguel. -0.1 points.",
+                "Werewolf Patricia was banished. +2 points.",
+                "Villager Miguel voted for werewolf Patricia. +0.2 points.",
+                "Villager Eric voted for werewolf Patricia. +0.2 points.",
+                "Villager Miguel voted for werewolf Patricia. +0.2 points.",
+                "Werewolf Patricia was banished. +2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": -1,
+    "surviving_players": [
+        {
+            "player_id": "Adele",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

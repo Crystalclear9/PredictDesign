@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+import json
+from pathlib import Path
 
 import torch
 
@@ -16,6 +19,7 @@ from predictdesign import (
     TemporalNode,
 )
 from predictdesign.benchmark.multiagentbench import MultiAgentBenchAdapter
+from predictdesign.benchmark.rich_log import train_mlp_on_rich_log, write_rich_log
 from predictdesign.benchmark.trainer import BenchmarkTrainer
 from predictdesign.messages import Message
 from predictdesign.prediction import PredictedGraphAction
@@ -391,6 +395,16 @@ class PredictDesignTests(unittest.TestCase):
                             effective_time=1.0,
                         ),
                         observed_actions=[],
+                    ),
+                    EpisodeStep(
+                        observation_time=2.0,
+                        messages=[],
+                        ground_truth_action=PredictedGraphAction(
+                            action_type=GraphActionType.NO_OP,
+                            score=1.0,
+                            effective_time=2.0,
+                        ),
+                        observed_actions=[],
                         valid_next_actions=[
                             PredictedGraphAction(
                                 action_type=GraphActionType.CREATE_EDGE,
@@ -402,6 +416,67 @@ class PredictDesignTests(unittest.TestCase):
                             )
                         ],
                     ),
+                ],
+            )
+        ]
+        results = evaluator.evaluate_dataset("toyset", episodes, gnn_types=("llm_api",))
+        self.assertEqual(len(results), 1)
+        self.assertTrue(all(item.gnn_type == "llm_api" for item in results))
+        self.assertTrue(all(item.message_reduce == "llm_api" for item in results))
+        self.assertTrue(all(item.state_updater == "llm_api" for item in results))
+
+    def test_benchmark_evaluator_reports_multi_hit_k(self) -> None:
+        def fake_completion(system_prompt: str, user_prompt: str, config: ExperimentConfig) -> str:
+            return """
+            {
+              "predicted_count": 2,
+              "actions": [
+                {
+                  "action_type": "create_edge",
+                  "source_node_id": "a",
+                  "target_node_id": "c",
+                  "relation_type": "communication",
+                  "score": 0.9
+                },
+                {
+                  "action_type": "create_edge",
+                  "source_node_id": "a",
+                  "target_node_id": "b",
+                  "relation_type": "communication",
+                  "score": 0.8
+                }
+              ]
+            }
+            """
+
+        evaluator = BenchmarkEvaluator(
+            context_dim=6,
+            hidden_dim=12,
+            train_epochs=0,
+            hit_k_values=(1, 2),
+            llm_completion_fn=fake_completion,
+        )
+        episodes = [
+            BenchmarkEpisode(
+                episode_id="llm-hitk",
+                dataset_name="toyset",
+                initial_nodes=[
+                    TemporalNode.build("a", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                    TemporalNode.build("b", "coder", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+                    TemporalNode.build("c", "critic", [0, 0, 1, 0, 0, 0], 6, "cpu"),
+                ],
+                initial_edges=[],
+                steps=[
+                    EpisodeStep(
+                        observation_time=1.0,
+                        messages=[],
+                        ground_truth_action=PredictedGraphAction(
+                            action_type=GraphActionType.NO_OP,
+                            score=1.0,
+                            effective_time=1.0,
+                        ),
+                        observed_actions=[],
+                    ),
                     EpisodeStep(
                         observation_time=2.0,
                         messages=[],
@@ -411,15 +486,25 @@ class PredictDesignTests(unittest.TestCase):
                             effective_time=2.0,
                         ),
                         observed_actions=[],
+                        valid_next_actions=[
+                            PredictedGraphAction(
+                                action_type=GraphActionType.CREATE_EDGE,
+                                score=1.0,
+                                effective_time=2.0,
+                                source_node_id="a",
+                                target_node_id="b",
+                                relation_type="communication",
+                            )
+                        ],
                     ),
                 ],
             )
         ]
-        results = evaluator.evaluate_dataset("toyset", episodes, gnn_types=("llm_api",))
-        self.assertEqual(len(results), 1)
-        self.assertTrue(all(item.gnn_type == "llm_api" for item in results))
-        self.assertTrue(all(item.message_reduce == "llm_api" for item in results))
-        self.assertTrue(all(item.state_updater == "llm_api" for item in results))
+        result = evaluator.evaluate_dataset("toyset", episodes, gnn_types=("llm_api",))[0]
+        self.assertEqual(result.hit_ks, (1, 2))
+        self.assertEqual(result.hit_at_k["1"], 0.0)
+        self.assertEqual(result.hit_at_k["2"], 1.0)
+        self.assertEqual(result.accuracy, 0.0)
 
     def test_relation_type_is_preserved_in_ground_truth_actions(self) -> None:
         adapter = MultiAgentBenchAdapter(context_dim=6, hidden_dim=12, device="cpu")
@@ -665,6 +750,86 @@ class PredictDesignTests(unittest.TestCase):
         self.assertIn(("seer_a", "wolf_a"), pairs)
         self.assertIn(("wolf_a", "villager_a"), pairs)
         self.assertNotIn(("seer_a", "seer_a"), pairs)
+
+    def test_rich_log_export_includes_query_nodes_and_graph(self) -> None:
+        adapter = MultiAgentBenchAdapter(context_dim=6, hidden_dim=12, device="cpu")
+        episode = adapter._research_payload_to_episode(
+            {
+                "task": "investigate graph logging",
+                "agent_profiles": {
+                    "agent1": {"profile": "planner"},
+                    "agent2": {"profile": "coder"},
+                },
+                "iterations": [
+                    {
+                        "communications": ["From agent1 to agent2: prepare plan"],
+                        "task_results": [{"agent_id": "agent1", "result": "plan output"}],
+                    },
+                    {
+                        "communications": ["From agent2 to agent1: implement"],
+                        "task_results": [{"agent_id": "agent2", "result": "code output"}],
+                    },
+                ],
+            },
+            line_number=1,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "rich.jsonl"
+            result = write_rich_log(log_path, [episode], context_dim=6)
+            self.assertEqual(result.record_count, 2)
+            records = [
+                json.loads(line)
+                for line in log_path.read_text(encoding="utf-8").splitlines()
+            ]
+        self.assertIn("investigate graph logging", records[0]["query"])
+        self.assertIn("nodes", records[0])
+        self.assertIn("graph_structure", records[0])
+        self.assertIn("target_actions", records[0])
+        self.assertGreaterEqual(records[0]["graph_structure"]["node_count"], 2)
+
+    def test_rich_log_mlp_writes_reports_for_all_signal_combinations(self) -> None:
+        adapter = MultiAgentBenchAdapter(context_dim=6, hidden_dim=12, device="cpu")
+        episodes = [
+            adapter._research_payload_to_episode(
+                {
+                    "task": f"query {index}",
+                    "agent_profiles": {
+                        "agent1": {"profile": "planner"},
+                        "agent2": {"profile": "coder"},
+                    },
+                    "iterations": [
+                        {
+                            "communications": ["From agent1 to agent2: first"],
+                            "task_results": [{"agent_id": "agent1", "result": "alpha"}],
+                        },
+                        {
+                            "communications": ["From agent2 to agent1: second"],
+                            "task_results": [{"agent_id": "agent2", "result": "beta"}],
+                        },
+                    ],
+                },
+                line_number=index,
+            )
+            for index in range(1, 3)
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "rich.jsonl"
+            out_dir = Path(tmpdir) / "mlp"
+            write_rich_log(log_path, episodes, context_dim=6)
+            result = train_mlp_on_rich_log(
+                log_path,
+                out_dir,
+                max_samples=4,
+                feature_dim=16,
+                hidden_dim=8,
+                epochs=2,
+                sentence_transformer_model="__missing_sentence_transformer_model__",
+            )
+            self.assertEqual(len(result.combinations), 7)
+            self.assertEqual(len(result.datasets), 1)
+            self.assertTrue(Path(result.report_path).exists())
+            self.assertTrue(Path(result.csv_path).exists())
+            self.assertTrue(Path(result.chart_path).exists())
 
 
 if __name__ == "__main__":

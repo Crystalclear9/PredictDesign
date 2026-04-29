@@ -1,0 +1,95 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "witch",
+            "villager",
+            "guard",
+            "wolf",
+            "wolf",
+            "villager",
+            "seer",
+            "villager",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 14.1,
+            "details": [
+                "Villager Matthew voted for werewolf Donald. +0.2 points.",
+                "Villager Donna voted for villager Dennis. -0.1 points.",
+                "Villager Cynthia voted for villager Dennis. -0.1 points.",
+                "Villager Linda voted for villager Dennis. -0.1 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Freda",
+                    "description": "Guard successfully protected Freda from werewolf attack."
+                },
+                "Day 2: Seer Freda survived. +1 point.",
+                "Villager Matthew voted for werewolf Donald. +0.2 points.",
+                "Villager Donna voted for werewolf Ruby. +0.2 points.",
+                "Villager Cynthia voted for werewolf Donald. +0.2 points.",
+                "Villager Freda voted for villager Cynthia. -0.1 points.",
+                "Villager Linda voted for werewolf Donald. +0.2 points.",
+                "Day 3: Seer Freda survived. +1 point.",
+                "Werewolf Donald was banished. +2 points.",
+                "Villager Matthew voted for werewolf Donald. +0.2 points.",
+                "Villager Donna voted for werewolf Donald. +0.2 points.",
+                "Villager Freda voted for werewolf Donald. +0.2 points.",
+                "Villager Linda voted for werewolf Donald. +0.2 points.",
+                "Day 4: Seer Freda survived. +1 point.",
+                "Werewolf Glenn was banished. +2 points.",
+                "Villager Donna voted for werewolf Glenn. +0.2 points.",
+                "Villager Freda voted for werewolf Glenn. +0.2 points.",
+                "Villager Linda voted for villager Donna. -0.1 points.",
+                "Day 5: Seer Freda survived. +1 point.",
+                "Villager Freda voted for werewolf Ruby. +0.2 points.",
+                "Werewolf Ruby was banished. +2 points.",
+                "Villager Donna voted for werewolf Ruby. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Dennis was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 1,
+    "surviving_players": [
+        {
+            "player_id": "Donna",
+            "role": "guard"
+        }
+    ],
+    "game_result": "Villagers win"
+}

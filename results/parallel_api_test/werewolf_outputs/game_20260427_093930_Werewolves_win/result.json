@@ -1,0 +1,84 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "seer",
+            "wolf",
+            "guard",
+            "villager",
+            "villager",
+            "villager",
+            "wolf",
+            "wolf",
+            "witch"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 4.900000000000001,
+            "details": [
+                "Werewolf Dorothy was banished. +2 points.",
+                "Villager Edmond voted for werewolf Dorothy. +0.2 points.",
+                "Villager Gene voted for werewolf Dorothy. +0.2 points.",
+                "Villager Blossom voted for werewolf Dorothy. +0.2 points.",
+                "Villager Marvin voted for werewolf Dorothy. +0.2 points.",
+                "Villager Carrie voted for werewolf Dorothy. +0.2 points.",
+                "Villager Alberta voted for werewolf Dorothy. +0.2 points.",
+                "Day 2: Seer Edmond survived. +1 point.",
+                "Villager Edmond voted for villager Carrie. -0.1 points.",
+                "Villager Gene voted for villager Marvin. -0.1 points.",
+                "Villager Marvin voted for villager Alberta. -0.1 points.",
+                "Villager Carrie voted for werewolf David. +0.2 points.",
+                "Villager Alberta voted for villager Edmond. -0.1 points.",
+                "Witch killed non-werewolf Marvin with poison. -2 points.",
+                "Day 3: Seer Edmond survived. +1 point.",
+                "Villager Edmond voted for villager Carrie. -0.1 points.",
+                "Villager Gene voted for villager Edmond. -0.1 points.",
+                "Villager Carrie voted for villager Edmond. -0.1 points.",
+                "Werewolf David was banished. +2 points.",
+                "Villager Carrie voted for werewolf David. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 6,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Edmond was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": -1,
+    "surviving_players": [
+        {
+            "player_id": "Paul",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

@@ -1,0 +1,88 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "seer",
+            "villager",
+            "wolf",
+            "guard",
+            "villager",
+            "wolf",
+            "wolf",
+            "witch",
+            "villager"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 2.5,
+            "details": [
+                "Villager Nicholas voted for villager John. -0.1 points.",
+                "Villager Barbara voted for villager Manuel. -0.1 points.",
+                "Villager Margaret voted for villager Manuel. -0.1 points.",
+                "Villager Manuel voted for villager Teresa. -0.1 points.",
+                "Villager Teresa voted for villager Manuel. -0.1 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "John",
+                    "description": "Guard successfully protected John from werewolf attack."
+                },
+                "Witch killed non-werewolf Teresa with poison. -2 points.",
+                "Day 2: Seer Nicholas survived. +1 point.",
+                "Villager Nicholas voted for villager John. -0.1 points.",
+                "Villager Barbara voted for villager John. -0.1 points.",
+                "Villager Margaret voted for villager John. -0.1 points.",
+                "Villager John voted for villager John. -0.1 points.",
+                "Villager Barbara voted for werewolf Georgia. +0.2 points.",
+                "Villager Margaret voted for werewolf Georgia. +0.2 points.",
+                "Werewolf Georgia was banished. +2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Manuel was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf John was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Barbara was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": -2,
+    "surviving_players": [
+        {
+            "player_id": "Verna",
+            "role": "wolf"
+        },
+        {
+            "player_id": "Anita",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

@@ -1,0 +1,81 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "witch",
+            "guard",
+            "villager",
+            "wolf",
+            "wolf",
+            "villager",
+            "seer",
+            "wolf",
+            "villager"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 2.399999999999999,
+            "details": [
+                "Witch killed werewolf Adrian with poison. +2 points.",
+                "Villager Mark voted for villager Vera. -0.1 points.",
+                "Villager Mirtha voted for villager Vera. -0.1 points.",
+                "Villager Helen voted for werewolf Chun. +0.2 points.",
+                "Villager Matthew voted for villager Vera. -0.1 points.",
+                "Day 2: Seer Helen survived. +1 point.",
+                "Villager Mirtha voted for villager Vera. -0.1 points.",
+                "Villager Helen voted for villager Vera. -0.1 points.",
+                "Villager Matthew voted for villager Vera. -0.1 points.",
+                "Villager Mirtha voted for villager Vera. -0.1 points.",
+                "Villager Matthew voted for villager Vera. -0.1 points."
+            ]
+        },
+        "werewolf": {
+            "total": 8,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Vera was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Vera was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Vera was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Matthew was banished. Werewolves +1 point."
+            ]
+        }
+    },
+    "result_score": -2,
+    "surviving_players": [
+        {
+            "player_id": "Flora",
+            "role": "wolf"
+        },
+        {
+            "player_id": "Chun",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

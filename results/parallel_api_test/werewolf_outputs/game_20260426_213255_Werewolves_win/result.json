@@ -1,0 +1,103 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "seer",
+            "villager",
+            "guard",
+            "wolf",
+            "wolf",
+            "villager",
+            "villager",
+            "wolf",
+            "witch"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 3.7000000000000015,
+            "details": [
+                "Werewolf Frank was banished. +2 points.",
+                "Villager Joshua voted for werewolf Frank. +0.2 points.",
+                "Villager Eddie voted for werewolf Frank. +0.2 points.",
+                "Villager Albert voted for werewolf Frank. +0.2 points.",
+                "Villager Jim voted for werewolf Frank. +0.2 points.",
+                "Villager Amy voted for villager Joshua. -0.1 points.",
+                "Villager Don voted for werewolf Frank. +0.2 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Joshua",
+                    "description": "Guard successfully protected Joshua from werewolf attack."
+                },
+                "Witch killed non-werewolf Joshua with poison. -2 points.",
+                "Villager Eddie voted for villager Jim. -0.1 points.",
+                "Villager Albert voted for villager Jim. -0.1 points.",
+                "Villager Jim voted for villager Albert. -0.1 points.",
+                "Villager Amy voted for villager Albert. -0.1 points.",
+                "Villager Don voted for villager Amy. -0.1 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Don",
+                    "description": "Guard successfully protected Don from werewolf attack."
+                },
+                "Villager Eddie voted for villager Albert. -0.1 points.",
+                "Villager Albert voted for villager Eddie. -0.1 points.",
+                "Villager Amy voted for villager Albert. -0.1 points.",
+                "Villager Don voted for villager Albert. -0.1 points.",
+                "Villager Eddie voted for villager Albert. -0.1 points.",
+                "Villager Amy voted for villager Eddie. -0.1 points.",
+                "Villager Don voted for villager Eddie. -0.1 points.",
+                "Villager Amy voted for villager Don. -0.1 points.",
+                "Villager Don voted for villager Amy. -0.1 points.",
+                "Villager Don voted for werewolf Mary. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 8,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Jim was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Albert was banished. Werewolves +1 point.",
+                "Non-werewolf Eddie was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Don was banished. Werewolves +1 point."
+            ]
+        }
+    },
+    "result_score": -2,
+    "surviving_players": [
+        {
+            "player_id": "Eunice",
+            "role": "wolf"
+        },
+        {
+            "player_id": "Mary",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

@@ -1,0 +1,102 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "wolf",
+            "guard",
+            "villager",
+            "villager",
+            "villager",
+            "seer",
+            "wolf",
+            "wolf",
+            "witch"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 12.699999999999994,
+            "details": [
+                "Villager Gilbert voted for werewolf Trisha. +0.2 points.",
+                "Villager Betty voted for villager Barbara. -0.1 points.",
+                "Villager Kenneth voted for werewolf Kevin. +0.2 points.",
+                "Villager Christian voted for werewolf Kevin. +0.2 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Kenneth",
+                    "description": "Guard successfully protected Kenneth from werewolf attack."
+                },
+                "Witch killed werewolf Trisha with poison. +2 points.",
+                "Day 2: Seer Kenneth survived. +1 point.",
+                "Werewolf Kevin was banished. +2 points.",
+                "Villager Gilbert voted for werewolf Kevin. +0.2 points.",
+                "Villager Barbara voted for werewolf Kevin. +0.2 points.",
+                "Villager Betty voted for werewolf Kevin. +0.2 points.",
+                "Villager Brian voted for werewolf Kevin. +0.2 points.",
+                "Villager Kenneth voted for werewolf Kevin. +0.2 points.",
+                "Villager Christian voted for werewolf Kevin. +0.2 points.",
+                "Day 3: Seer Kenneth survived. +1 point.",
+                "Werewolf James was banished. +2 points.",
+                "Villager Gilbert voted for werewolf James. +0.2 points.",
+                "Villager Barbara voted for werewolf James. +0.2 points.",
+                "Villager Betty voted for werewolf James. +0.2 points.",
+                "Villager Brian voted for werewolf James. +0.2 points.",
+                "Villager Kenneth voted for werewolf James. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 3,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 5,
+    "surviving_players": [
+        {
+            "player_id": "Gilbert",
+            "role": "guard"
+        },
+        {
+            "player_id": "Barbara",
+            "role": "villager"
+        },
+        {
+            "player_id": "Betty",
+            "role": "villager"
+        },
+        {
+            "player_id": "Brian",
+            "role": "villager"
+        },
+        {
+            "player_id": "Kenneth",
+            "role": "seer"
+        }
+    ],
+    "game_result": "Villagers win"
+}

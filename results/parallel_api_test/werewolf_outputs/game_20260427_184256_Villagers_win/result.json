@@ -1,0 +1,90 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "villager",
+            "witch",
+            "wolf",
+            "villager",
+            "guard",
+            "seer",
+            "wolf",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 10.399999999999999,
+            "details": [
+                "Villager Ella voted for villager Alicia. -0.1 points.",
+                "Villager George voted for villager Alicia. -0.1 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Ella",
+                    "description": "Guard successfully protected Ella from werewolf attack."
+                },
+                "Villager Ella voted for villager Jeffrey. -0.1 points.",
+                "Villager Jeffrey voted for villager Ella. -0.1 points.",
+                "Witch killed werewolf Hugh with poison. +2 points.",
+                "Villager George voted for werewolf Andrew. +0.2 points.",
+                "Werewolf Andrew was banished. +2 points.",
+                "Villager George voted for werewolf Andrew. +0.2 points.",
+                "Villager Rob voted for werewolf Andrew. +0.2 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "George",
+                    "description": "Guard successfully protected George from werewolf attack."
+                },
+                "Werewolf April was banished. +2 points.",
+                "Villager Rob voted for werewolf April. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Alicia was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Ella was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 2,
+    "surviving_players": [
+        {
+            "player_id": "George",
+            "role": "villager"
+        },
+        {
+            "player_id": "Rob",
+            "role": "guard"
+        }
+    ],
+    "game_result": "Villagers win"
+}

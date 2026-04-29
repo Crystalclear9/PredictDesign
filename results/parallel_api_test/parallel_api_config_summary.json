@@ -1,0 +1,38 @@
+{
+  "results_dir": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test",
+  "python_bin": "C:\\Users\\70454\\Desktop\\PredictDesign\\.venv\\Scripts\\python.exe",
+  "resume": true,
+  "tee_subprocess_output": false,
+  "run_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\logs\\parallel_api_run.log",
+  "output_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\rich_log.jsonl",
+  "apis": {
+    "coding": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "research": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "werewolf": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    }
+  },
+  "outputs": {}
+}

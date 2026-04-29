@@ -1,0 +1,99 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "witch",
+            "wolf",
+            "wolf",
+            "guard",
+            "villager",
+            "villager",
+            "seer",
+            "villager",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 8.3,
+            "details": [
+                "Werewolf Mark was banished. +2 points.",
+                "Villager Bobby voted for villager Ryan. -0.1 points.",
+                "Villager Tyler voted for werewolf Mark. +0.2 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Tyler",
+                    "description": "Guard successfully protected Tyler from werewolf attack."
+                },
+                "Witch killed non-werewolf Ryan with poison. -2 points.",
+                "Day 2: Seer Tyler survived. +1 point.",
+                "Villager Timothy voted for villager John. -0.1 points.",
+                "Villager John voted for werewolf Carolyn. +0.2 points.",
+                "Villager Tyler voted for werewolf Philip. +0.2 points.",
+                "Villager Barbara voted for villager John. -0.1 points.",
+                "Day 3: Seer Tyler survived. +1 point.",
+                "Villager Timothy voted for villager Tyler. -0.1 points.",
+                "Villager Bobby voted for villager Tyler. -0.1 points.",
+                "Villager Tyler voted for werewolf Philip. +0.2 points.",
+                "Villager Barbara voted for villager Tyler. -0.1 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Barbara",
+                    "description": "Guard successfully protected Barbara from werewolf attack."
+                },
+                "Werewolf Philip was banished. +2 points.",
+                "Villager Timothy voted for werewolf Philip. +0.2 points.",
+                "Villager Bobby voted for villager Timothy. -0.1 points."
+            ]
+        },
+        "werewolf": {
+            "total": 6,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf John was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Tyler was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 3,
+    "surviving_players": [
+        {
+            "player_id": "Timothy",
+            "role": "guard"
+        },
+        {
+            "player_id": "Bobby",
+            "role": "villager"
+        },
+        {
+            "player_id": "Barbara",
+            "role": "villager"
+        }
+    ],
+    "game_result": "Villagers win"
+}

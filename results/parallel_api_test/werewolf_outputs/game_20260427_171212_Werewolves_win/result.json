@@ -1,0 +1,78 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "witch",
+            "villager",
+            "wolf",
+            "wolf",
+            "villager",
+            "villager",
+            "seer",
+            "guard",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 4.700000000000001,
+            "details": [
+                "Villager John voted for werewolf Juan. +0.2 points.",
+                "Villager Classie voted for villager John. -0.1 points.",
+                "Villager Gary voted for villager Ralph. -0.1 points.",
+                "Villager Connie voted for villager John. -0.1 points.",
+                "Villager Ralph voted for werewolf Marva. +0.2 points.",
+                "Villager Ignacio voted for villager Ralph. -0.1 points.",
+                "Witch killed werewolf Juan with poison. +2 points.",
+                "Werewolf Marva was banished. +2 points.",
+                "Villager Classie voted for werewolf Marva. +0.2 points.",
+                "Villager Gary voted for werewolf Marva. +0.2 points.",
+                "Villager Connie voted for werewolf Marva. +0.2 points.",
+                "Villager Ignacio voted for werewolf Marva. +0.2 points.",
+                "Villager Connie voted for villager Gary. -0.1 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Ralph was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Gary was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Classie was banished. Werewolves +1 point."
+            ]
+        }
+    },
+    "result_score": -1,
+    "surviving_players": [
+        {
+            "player_id": "Paula",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

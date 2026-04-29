@@ -5,7 +5,11 @@ from .benchmark import (
     BenchmarkTrainer,
     CombinationResult,
     EpisodeStep,
+    MLPTrainingResult,
     MultiAgentBenchAdapter,
+    RichLogExportResult,
+    train_mlp_on_rich_log,
+    write_rich_log,
 )
 from .completion import NodeCompletionClassifier
 from .config import ExperimentConfig, LLMApiConfig
@@ -41,6 +45,7 @@ __all__ = [
     "MDPTransitionSummary",
     "Message",
     "MessageAction",
+    "MLPTrainingResult",
     "MultiAgentBenchAdapter",
     "NodeCompletionClassifier",
     "PredictedGraphAction",
@@ -50,9 +55,12 @@ __all__ = [
     "QueryParseResult",
     "QueryParser",
     "RelationalAttentionLayer",
+    "RichLogExportResult",
     "SentenceTransformerEncoder",
     "StateRecord",
     "TemporalEdge",
     "TemporalGraph",
     "TemporalNode",
+    "train_mlp_on_rich_log",
+    "write_rich_log",
 ]

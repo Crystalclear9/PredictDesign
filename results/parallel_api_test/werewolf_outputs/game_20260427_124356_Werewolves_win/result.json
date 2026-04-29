@@ -1,0 +1,74 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "villager",
+            "seer",
+            "villager",
+            "witch",
+            "wolf",
+            "guard",
+            "wolf",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 3.2,
+            "details": [
+                "Villager Ernest voted for villager Melissa. -0.1 points.",
+                "Villager Alex voted for villager Melissa. -0.1 points.",
+                "Witch killed non-werewolf Ernest with poison. -2 points.",
+                "Day 2: Seer Patty survived. +1 point.",
+                "Day 3: Seer Patty survived. +1 point.",
+                "Villager Patty voted for werewolf Eric. +0.2 points.",
+                "Day 4: Seer Patty survived. +1 point.",
+                "Werewolf Eric was banished. +2 points.",
+                "Villager Patty voted for werewolf Eric. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Melissa was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Jared was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": -1,
+    "surviving_players": [
+        {
+            "player_id": "Darlene",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

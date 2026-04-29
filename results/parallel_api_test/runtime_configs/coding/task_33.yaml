@@ -1,0 +1,114 @@
+coordinate_mode: graph
+relationships:
+- - agent1
+  - agent2
+  - collaborates with
+- - agent2
+  - agent1
+  - collaborates with
+- - agent1
+  - agent3
+  - collaborates with
+- - agent3
+  - agent1
+  - collaborates with
+- - agent2
+  - agent3
+  - collaborates with
+- - agent3
+  - agent2
+  - collaborates with
+llm: Qwen/Qwen2.5-Coder-32B-Instruct
+llm_sampling:
+  temperature: 0.0
+  top_p: 1.0
+  max_tokens: 8192
+environment:
+  type: Coding
+  name: Coding Environment
+  workspace_dir: C:\Users\70454\Desktop\PredictDesign\results\parallel_api_test\runtime_configs\coding\task_33_workspace
+  max_iterations: 5
+task:
+  content: "Software Development Task:\n\nPlease write a system called PhotoCollabEditor\
+    \ that enables multiple users to collaboratively edit photos in real-time. PhotoCollabEditor\
+    \ is a web-based application that allows users to work together on editing photos,\
+    \ applying filters, adjusting colors, and removing backgrounds, with changes visible\
+    \ to all participants immediately.\n\n1. Implementation requirements:\n\n2. Project\
+    \ structure:\n   - solution.py (main implementation)\n\n3. Development process:\n\
+    \   - Developer: Create the code.\n   - Developer: Revise the code.\n   - Developer:\
+    \ Optimize the code.\n\nPlease work together to complete this task following software\
+    \ engineering best practices."
+  output_format: 'The final deliverable should include:
+
+    solution.py
+
+    '
+agents:
+- type: BaseAgent
+  agent_id: agent1
+  profile: 'I am a Senior Software Developer specialized in Python development.
+
+    I am good at creating the code framework from scratch based on the task description
+    and requirements.
+
+    So I **have to** call "create_code" action to create the code in the first iteration
+    at first.
+
+    I am **very terrible** at do further modifications since I am not so creative
+    or careful so I **have to** let agent 2 or agent 3 revise the code after I create
+    the code and I **can''t** call "give_advice_and_revise" action.
+
+    Agent 2 is better at adding missing functions so it''s better to let agent 2 revise
+    the code at first.
+
+    Agent 3 is better at fixing existing issues and optimizing the code so it''s better
+    to let agent 3 revise the code after agent 2 has revised the code so that the
+    code is more optimized.
+
+    '
+- type: BaseAgent
+  agent_id: agent2
+  profile: 'I am a Senior Software Developer specialized in Python development.
+
+    I am better at adding missing functionality based on my decent understanding and
+    compliance to the task description and requirements.
+
+    I **have to** call "give_advice_and_revise" action to give advice to the code
+    and revise the code.
+
+    I **can''t** call "create_code" action since I am not good at creating the code
+    framework from scratch.
+
+    I can let agent 3 to make the code more optimized after I have added the missing
+    functionality.
+
+    '
+- type: BaseAgent
+  agent_id: agent3
+  profile: 'I am a Senior Software Developer specialized in Python development.
+
+    I am better at fixing existing issues and optimizing the code based on my innovation
+    and creativity.
+
+    I **have to** call "give_advice_and_revise" action to give advice to the code
+    and revise the code.
+
+    I **can''t** call "create_code" action since I am not good at creating the code
+    framework from scratch.
+
+    I can let agent 2 to add the missing functionality after I have fixed the existing
+    issues and optimized the code.
+
+    '
+memory:
+  type: SharedMemory
+metrics:
+  code_quality: true
+  test_coverage: true
+  collaboration_effectiveness: true
+  evaluate_llm: Qwen/Qwen2.5-Coder-32B-Instruct
+engine_planner:
+  initial_progress: Starting the software development project with team coordination.
+output:
+  format: jsonl
+  file_path: C:\Users\70454\Desktop\PredictDesign\results\parallel_api_test\coding_outputs\task_33_result.jsonl

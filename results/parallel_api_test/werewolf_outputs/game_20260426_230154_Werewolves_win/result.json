@@ -1,0 +1,95 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "seer",
+            "guard",
+            "wolf",
+            "wolf",
+            "villager",
+            "wolf",
+            "villager",
+            "witch"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 15.7,
+            "details": [
+                "Villager Elmer voted for villager Kevin. -0.1 points.",
+                "Villager Kristy voted for villager Kevin. -0.1 points.",
+                "Villager Dawn voted for villager Kevin. -0.1 points.",
+                "Villager Jose voted for villager Kevin. -0.1 points.",
+                "Villager Dolores voted for villager Kevin. -0.1 points.",
+                "Day 2: Seer Kristy survived. +1 point.",
+                "Werewolf Sharon was banished. +2 points.",
+                "Villager Elmer voted for werewolf Sharon. +0.2 points.",
+                "Villager Kristy voted for werewolf Sharon. +0.2 points.",
+                "Villager Dawn voted for werewolf Sharon. +0.2 points.",
+                "Villager Dolores voted for werewolf Sharon. +0.2 points.",
+                "Day 3: Seer Kristy survived. +1 point.",
+                "Werewolf Sharon was banished. +2 points.",
+                "Villager Kristy voted for werewolf Sharon. +0.2 points.",
+                "Villager Dawn voted for werewolf Sharon. +0.2 points.",
+                "Villager Dolores voted for werewolf Sharon. +0.2 points.",
+                "Werewolf Sharon was banished. +2 points.",
+                "Villager Dawn voted for werewolf Sharon. +0.2 points.",
+                "Werewolf Sharon was banished. +2 points.",
+                "Villager Dawn voted for werewolf Sharon. +0.2 points.",
+                "Villager Dolores voted for werewolf Sharon. +0.2 points.",
+                "Werewolf Sharon was banished. +2 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Dawn",
+                    "description": "Guard successfully protected Dawn from werewolf attack."
+                },
+                "Villager Dawn voted for werewolf Shara. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 9,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Kevin was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": -1,
+    "surviving_players": [
+        {
+            "player_id": "Shara",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

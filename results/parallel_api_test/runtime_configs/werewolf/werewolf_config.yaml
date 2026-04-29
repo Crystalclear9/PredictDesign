@@ -1,0 +1,30 @@
+openai_api_key: sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri
+log_werewolf_llm_io: true
+log_werewolf_llm_max_chars: 100000
+llm_sampling:
+  temperature: 0
+  top_p: 1.0
+  max_tokens: 8192
+system_prompt_path: core/agent/werewolf_prompts/system_prompt.yaml
+roles:
+- wolf
+- wolf
+- wolf
+- villager
+- villager
+- villager
+- seer
+- witch
+- guard
+randomize_roles: true
+use_random_names: true
+villager_config:
+  base_url: https://api.siliconflow.cn/v1
+  api_key: sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri
+  model_name: Qwen/Qwen2.5-Coder-32B-Instruct
+werewolf_config:
+  base_url: https://api.siliconflow.cn/v1
+  api_key: sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri
+  model_name: Qwen/Qwen2.5-Coder-32B-Instruct
+cooperation_mode: cooperative
+use_daily_tasks: true

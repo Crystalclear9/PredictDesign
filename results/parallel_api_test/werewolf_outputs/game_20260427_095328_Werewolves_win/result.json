@@ -1,0 +1,84 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "seer",
+            "guard",
+            "wolf",
+            "villager",
+            "witch",
+            "villager",
+            "wolf",
+            "wolf",
+            "villager"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 5.8,
+            "details": [
+                "Villager Theresa voted for werewolf Elaine. +0.2 points.",
+                "Villager Charlene voted for villager Frank. -0.1 points.",
+                "Villager Pamela voted for werewolf Gary. +0.2 points.",
+                "Villager Allison voted for villager Theresa. -0.1 points.",
+                "Villager Julio voted for villager Theresa. -0.1 points.",
+                "Witch killed werewolf Gary with poison. +2 points.",
+                "Villager Charlene voted for villager Julio. -0.1 points.",
+                "Villager Pamela voted for villager Julio. -0.1 points.",
+                "Villager Julio voted for villager Allison. -0.1 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Pamela",
+                    "description": "Guard successfully protected Pamela from werewolf attack."
+                },
+                "Villager Charlene voted for villager Allison. -0.1 points.",
+                "Villager Pamela voted for villager Allison. -0.1 points.",
+                "Werewolf Tammy was banished. +2 points.",
+                "Villager Charlene voted for werewolf Tammy. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 8,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Theresa was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Julio was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Allison was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": -1,
+    "surviving_players": [
+        {
+            "player_id": "Elaine",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

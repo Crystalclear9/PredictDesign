@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from math import ceil
 from pathlib import Path
 
@@ -23,10 +23,15 @@ class CombinationResult:
     total_steps: int
     correct_steps: int
     accuracy: float
+    hit_ks: tuple[int, ...]
+    hit_counts: dict[str, int]
+    hit_at_k: dict[str, float]
     train_episode_count: int
     eval_episode_count: int
     one_step_correct_steps: int = 0
     one_step_accuracy: float = 0.0
+    one_step_hit_counts: dict[str, int] = field(default_factory=dict)
+    one_step_hit_at_k: dict[str, float] = field(default_factory=dict)
     rollout_total_actions: int = 0
     rollout_exact_correct_actions: int = 0
     rollout_exact_accuracy: float = 0.0
@@ -52,6 +57,7 @@ class BenchmarkEvaluator:
         seed: int = 7,
         cv_folds: int = 5,
         first_step_loss_weight: float = 3.0,
+        hit_k_values: tuple[int, ...] = (1, 3, 5),
         llm_api_config: LLMApiConfig | None = None,
         llm_completion_fn=None,
     ) -> None:
@@ -61,6 +67,11 @@ class BenchmarkEvaluator:
         self.device = device
         self.seed = seed
         self.cv_folds = cv_folds
+        normalized_hit_ks = tuple(dict.fromkeys(int(k) for k in hit_k_values))
+        if not normalized_hit_ks or any(k <= 0 for k in normalized_hit_ks):
+            raise ValueError("hit_k_values must contain positive integers.")
+        self.hit_k_values = normalized_hit_ks
+        self.primary_hit_k = self.hit_k_values[0]
         self.llm_api_config = llm_api_config or LLMApiConfig()
         self.llm_completion_fn = llm_completion_fn
         self.trainer = BenchmarkTrainer(
@@ -93,9 +104,9 @@ class BenchmarkEvaluator:
                 combinations.append((reduce_mode, updater_type, gnn_type, reduce_mode, updater_type))
 
         for reduce_mode, updater_type, gnn_type, display_reduce_mode, display_updater_type in combinations:
-            correct = 0
             total = 0
-            one_step_correct = 0
+            hit_counts = {k: 0 for k in self.hit_k_values}
+            one_step_hit_counts = {k: 0 for k in self.hit_k_values}
             rollout_total = 0
             rollout_exact_correct = 0
             rollout_subgraph_correct = 0
@@ -138,11 +149,18 @@ class BenchmarkEvaluator:
                         future_action_windows = [actions for _, actions in future_targets]
                         future_union = self._flatten_action_windows(future_action_windows)
                         first_predicted_window = predicted_action_windows[0] if predicted_action_windows else []
-                        if self._window_matches_any(first_predicted_window, future_action_windows[0]):
-                            one_step_correct += 1
                         predicted_union = self._flatten_action_windows(predicted_action_windows)
-                        if self._window_matches_any(predicted_union, future_union):
-                            correct += 1
+                        for hit_k in self.hit_k_values:
+                            if self._window_matches_any(
+                                self._top_k_actions(first_predicted_window, hit_k),
+                                future_action_windows[0],
+                            ):
+                                one_step_hit_counts[hit_k] += 1
+                            if self._window_matches_any(
+                                self._top_k_actions(predicted_union, hit_k),
+                                future_union,
+                            ):
+                                hit_counts[hit_k] += 1
                         total += 1
                         rollout_total += sum(len(window) for window in predicted_action_windows)
                         predicted_total += len(predicted_union)
@@ -158,6 +176,16 @@ class BenchmarkEvaluator:
                 if (precision + recall) > 0
                 else 0.0
             )
+            hit_rates = {
+                str(hit_k): (hit_counts[hit_k] / total) if total else 0.0
+                for hit_k in self.hit_k_values
+            }
+            one_step_hit_rates = {
+                str(hit_k): (one_step_hit_counts[hit_k] / total) if total else 0.0
+                for hit_k in self.hit_k_values
+            }
+            primary_hit_count = hit_counts[self.primary_hit_k]
+            primary_one_step_hit_count = one_step_hit_counts[self.primary_hit_k]
             results.append(
                 CombinationResult(
                     dataset_name=dataset_name,
@@ -165,12 +193,19 @@ class BenchmarkEvaluator:
                     state_updater=display_updater_type,
                     gnn_type=gnn_type,
                     total_steps=total,
-                    correct_steps=correct,
-                    accuracy=(correct / total) if total else 0.0,
+                    correct_steps=primary_hit_count,
+                    accuracy=hit_rates[str(self.primary_hit_k)],
+                    hit_ks=self.hit_k_values,
+                    hit_counts={str(hit_k): hit_counts[hit_k] for hit_k in self.hit_k_values},
+                    hit_at_k=hit_rates,
                     train_episode_count=average_train_count,
                     eval_episode_count=average_eval_count,
-                    one_step_correct_steps=one_step_correct,
-                    one_step_accuracy=(one_step_correct / total) if total else 0.0,
+                    one_step_correct_steps=primary_one_step_hit_count,
+                    one_step_accuracy=one_step_hit_rates[str(self.primary_hit_k)],
+                    one_step_hit_counts={
+                        str(hit_k): one_step_hit_counts[hit_k] for hit_k in self.hit_k_values
+                    },
+                    one_step_hit_at_k=one_step_hit_rates,
                     rollout_total_actions=rollout_total,
                     rollout_exact_correct_actions=rollout_exact_correct,
                     rollout_exact_accuracy=(rollout_exact_correct / rollout_total) if rollout_total else 0.0,
@@ -266,6 +301,15 @@ class BenchmarkEvaluator:
                 seen.add(key)
                 flattened.append(action)
         return flattened
+
+    def _top_k_actions(
+        self,
+        actions: list[PredictedGraphAction],
+        k: int,
+    ) -> list[PredictedGraphAction]:
+        if k <= 0:
+            return []
+        return actions[:k]
 
     def _actions_match_any(
         self,

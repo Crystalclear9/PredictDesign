@@ -1,0 +1,87 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "wolf",
+            "villager",
+            "guard",
+            "wolf",
+            "villager",
+            "villager",
+            "witch",
+            "seer",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 4.200000000000002,
+            "details": [
+                "Witch killed non-werewolf Devin with poison. -2 points.",
+                "Villager Antionette voted for werewolf Amanda. +0.2 points.",
+                "Day 2: Seer Susan survived. +1 point.",
+                "Villager Misty voted for werewolf Rhonda. +0.2 points.",
+                "Villager Antionette voted for villager Misty. -0.1 points.",
+                "Villager Susan voted for werewolf Rhonda. +0.2 points.",
+                "Day 3: Seer Susan survived. +1 point.",
+                "Werewolf Rhonda was banished. +2 points.",
+                "Villager Elena voted for werewolf Rhonda. +0.2 points.",
+                "Villager Misty voted for werewolf Rhonda. +0.2 points.",
+                "Villager Antionette voted for werewolf Rhonda. +0.2 points.",
+                "Villager Susan voted for werewolf Rhonda. +0.2 points.",
+                "Day 4: Seer Susan survived. +1 point.",
+                "Villager Elena voted for werewolf Rhonda. +0.2 points.",
+                "Villager Misty voted for villager Susan. -0.1 points.",
+                "Villager Antionette voted for villager Susan. -0.1 points.",
+                "Villager Susan voted for villager Elena. -0.1 points."
+            ]
+        },
+        "werewolf": {
+            "total": 4,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Susan was banished. Werewolves +1 point."
+            ]
+        }
+    },
+    "result_score": 3,
+    "surviving_players": [
+        {
+            "player_id": "Elena",
+            "role": "villager"
+        },
+        {
+            "player_id": "Misty",
+            "role": "guard"
+        },
+        {
+            "player_id": "Antionette",
+            "role": "witch"
+        }
+    ],
+    "game_result": "Villagers win"
+}

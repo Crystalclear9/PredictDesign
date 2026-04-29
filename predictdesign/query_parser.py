@@ -81,16 +81,19 @@ class QueryParser:
         time_value: float = 0.0,
     ) -> list[Message]:
         context = self._text_to_context(query_text)
-        return [
-            Message.build_query_message(
+        messages: list[Message] = []
+        for node_id in target_node_ids:
+            message = Message.build_query_message(
                 target_node_id=node_id,
                 time=time_value,
                 context=context,
                 context_dim=self.context_dim,
                 device=self.device,
             )
-            for node_id in target_node_ids
-        ]
+            message.metadata["raw_text"] = query_text
+            message.metadata["query_text"] = query_text
+            messages.append(message)
+        return messages
 
     def _parse_explicit_nodes(self, query_text: str) -> list[TemporalNode]:
         patterns = (

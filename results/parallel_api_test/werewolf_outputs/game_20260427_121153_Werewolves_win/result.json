@@ -1,0 +1,79 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "guard",
+            "witch",
+            "wolf",
+            "villager",
+            "wolf",
+            "villager",
+            "seer",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 7.700000000000001,
+            "details": [
+                {
+                    "event": "guard_protection",
+                    "target": "Sylvia",
+                    "description": "Guard successfully protected Sylvia from werewolf attack."
+                },
+                "Villager-aligned sheriff Jason elected. +2 points.",
+                "Villager Edna voted for villager Robert. -0.1 points.",
+                "Villager Lisette voted for villager Sylvia. -0.1 points.",
+                "Witch killed werewolf Amee with poison. +2 points.",
+                "Villager Lisette voted for villager Randy. -0.1 points.",
+                "Villager Jason voted for villager Lisette. -0.1 points.",
+                "Villager Edna voted for werewolf Megan. +0.2 points.",
+                "Villager Randy voted for villager Robert. -0.1 points.",
+                "Werewolf Megan was banished. +2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Robert was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Lisette was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Randy was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": -1,
+    "surviving_players": [
+        {
+            "player_id": "Kenneth",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

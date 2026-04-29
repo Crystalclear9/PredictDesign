@@ -1,0 +1,10 @@
+Task Description for Agent 2:
+
+Please write a system called CollaborativeStoryBuilder that enables multiple users to collaboratively create and share stories in real-time. CollaborativeStoryBuilder is a web-based platform that allows users to start a story, invite friends to contribute, and build narratives together. The system supports features like real-time editing, version control, and a community gallery to showcase completed stories.
+
+Your tasks include:
+1. Setting up the project structure.
+2. Creating the main implementation file (`solution.py`).
+3. Implementing the basic features of the CollaborativeStoryBuilder system.
+
+Once the initial code is in place, Agent 3 will take over to give advice, revise, and optimize the code.

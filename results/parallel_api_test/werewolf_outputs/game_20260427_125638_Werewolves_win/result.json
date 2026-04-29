@@ -1,0 +1,82 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "wolf",
+            "guard",
+            "wolf",
+            "villager",
+            "witch",
+            "villager",
+            "wolf",
+            "seer",
+            "villager"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 0.5000000000000003,
+            "details": [
+                "Villager Charles voted for villager James. -0.1 points.",
+                "Villager Ethel voted for villager Stephanie. -0.1 points.",
+                "Villager Kathleen voted for villager Ethel. -0.1 points.",
+                "Day 2: Seer Kathleen survived. +1 point.",
+                "Werewolf Margaret was banished. +2 points.",
+                "Villager Charles voted for werewolf Margaret. +0.2 points.",
+                "Villager Ethel voted for werewolf Margaret. +0.2 points.",
+                "Villager Stephanie voted for villager James. -0.1 points.",
+                "Villager James voted for villager James. -0.1 points.",
+                "Villager Kathleen voted for villager James. -0.1 points.",
+                "Witch killed non-werewolf Charles with poison. -2 points.",
+                "Villager Ethel voted for villager Stephanie. -0.1 points.",
+                "Villager Stephanie voted for villager James. -0.1 points.",
+                "Villager James voted for villager James. -0.1 points."
+            ]
+        },
+        "werewolf": {
+            "total": 6,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Stephanie was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf James was banished. Werewolves +1 point."
+            ]
+        }
+    },
+    "result_score": -2,
+    "surviving_players": [
+        {
+            "player_id": "Agnes",
+            "role": "wolf"
+        },
+        {
+            "player_id": "Molly",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

@@ -1,0 +1,87 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "wolf",
+            "villager",
+            "wolf",
+            "guard",
+            "seer",
+            "witch",
+            "wolf",
+            "villager"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 7.600000000000001,
+            "details": [
+                {
+                    "event": "guard_protection",
+                    "target": "Cheryl",
+                    "description": "Guard successfully protected Cheryl from werewolf attack."
+                },
+                "Villager Cheryl voted for villager Renea. -0.1 points.",
+                "Villager Lazaro voted for villager Renea. -0.1 points.",
+                "Villager Renea voted for werewolf Margie. +0.2 points.",
+                "Villager Heather voted for villager Renea. -0.1 points.",
+                "Villager Cheryl voted for werewolf Margie. +0.2 points.",
+                "Villager Lazaro voted for werewolf Margie. +0.2 points.",
+                "Villager Pamela voted for villager Louis. -0.1 points.",
+                "Villager Louis voted for werewolf Margie. +0.2 points.",
+                "Werewolf Margie was banished. +2 points.",
+                "Villager Lazaro voted for werewolf Margie. +0.2 points.",
+                "Villager Pamela voted for werewolf Margie. +0.2 points.",
+                "Villager Louis voted for werewolf Margie. +0.2 points.",
+                "Witch killed non-werewolf Louis with poison. -2 points.",
+                "Werewolf Amy was banished. +2 points.",
+                "Villager Lazaro voted for werewolf Amy. +0.2 points.",
+                "Villager Pamela voted for werewolf Amy. +0.2 points.",
+                "Werewolf Samantha was banished. +2 points.",
+                "Villager Lazaro voted for werewolf Samantha. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 6,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Renea was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 1,
+    "surviving_players": [
+        {
+            "player_id": "Lazaro",
+            "role": "villager"
+        }
+    ],
+    "game_result": "Villagers win"
+}

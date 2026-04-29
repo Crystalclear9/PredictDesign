@@ -1,0 +1,81 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "wolf",
+            "villager",
+            "guard",
+            "villager",
+            "wolf",
+            "witch",
+            "wolf",
+            "seer"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 2.3,
+            "details": [
+                "Villager Cedric voted for villager Michael. -0.1 points.",
+                "Villager John voted for villager Michael. -0.1 points.",
+                "Villager Jerold voted for villager Michael. -0.1 points.",
+                "Witch killed non-werewolf Jean with poison. -2 points.",
+                "Day 2: Seer Jerold survived. +1 point.",
+                "Werewolf Lamar was banished. +2 points.",
+                "Villager Ivan voted for werewolf Lamar. +0.2 points.",
+                "Villager Cedric voted for werewolf Lamar. +0.2 points.",
+                "Villager Jerold voted for werewolf Lamar. +0.2 points.",
+                "Day 3: Seer Jerold survived. +1 point.",
+                "Villager Ivan voted for werewolf Gail. +0.2 points.",
+                "Villager Cedric voted for villager Cedric. -0.1 points.",
+                "Villager Jerold voted for werewolf Gail. +0.2 points.",
+                "Villager Ivan voted for villager Cedric. -0.1 points.",
+                "Villager Ivan voted for villager Cedric. -0.1 points.",
+                "Villager Cedric voted for villager Cedric. -0.1 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Michael was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Cedric was banished. Werewolves +1 point."
+            ]
+        }
+    },
+    "result_score": 1,
+    "surviving_players": [
+        {
+            "player_id": "Ivan",
+            "role": "villager"
+        }
+    ],
+    "game_result": "Villagers win"
+}

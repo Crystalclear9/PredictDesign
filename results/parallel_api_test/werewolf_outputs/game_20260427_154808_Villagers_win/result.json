@@ -1,0 +1,89 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "wolf",
+            "wolf",
+            "villager",
+            "witch",
+            "wolf",
+            "guard",
+            "villager",
+            "villager",
+            "seer"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 11.399999999999999,
+            "details": [
+                "Villager-aligned sheriff Scott elected. +2 points.",
+                "Villager Joseph voted for werewolf Terry. +0.2 points.",
+                "Villager Jacob voted for villager Joseph. -0.1 points.",
+                "Villager Mary voted for villager Joseph. -0.1 points.",
+                "Villager Virginia voted for werewolf Terry. +0.2 points.",
+                "Villager Scott voted for villager Joseph. -0.1 points.",
+                "Villager Evan voted for villager Joseph. -0.1 points.",
+                "Witch killed werewolf Gary with poison. +2 points.",
+                "Day 2: Seer Evan survived. +1 point.",
+                "Werewolf Terry was banished. +2 points.",
+                "Villager Jacob voted for werewolf Terry. +0.2 points.",
+                "Villager Mary voted for werewolf Terry. +0.2 points.",
+                "Villager Virginia voted for werewolf Terry. +0.2 points.",
+                "Villager Evan voted for werewolf Terry. +0.2 points.",
+                "Day 3: Seer Evan survived. +1 point.",
+                "Werewolf Kristin was banished. +2 points.",
+                "Villager Mary voted for werewolf Kristin. +0.2 points.",
+                "Villager Virginia voted for werewolf Kristin. +0.2 points.",
+                "Villager Evan voted for werewolf Kristin. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 4,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Joseph was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 3,
+    "surviving_players": [
+        {
+            "player_id": "Mary",
+            "role": "guard"
+        },
+        {
+            "player_id": "Virginia",
+            "role": "villager"
+        },
+        {
+            "player_id": "Evan",
+            "role": "seer"
+        }
+    ],
+    "game_result": "Villagers win"
+}

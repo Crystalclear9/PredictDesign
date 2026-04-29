@@ -1,0 +1,482 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "guard",
+            "wolf",
+            "witch",
+            "villager",
+            "villager",
+            "wolf",
+            "villager",
+            "seer",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "shared_memory": {
+        "public_state": {
+            "days": 1,
+            "day/night": "night",
+            "alive_players": [
+                "Tarah",
+                "Dorothy",
+                "Mathew",
+                "Barry",
+                "Bonnie",
+                "Darryl",
+                "Kimberly",
+                "Katharine",
+                "Nicole"
+            ],
+            "sheriff": null,
+            "event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n",
+            "speech_order": {},
+            "day_cache": []
+        },
+        "private_state": {
+            "players": {
+                "Tarah": {
+                    "role": "guard",
+                    "status": {
+                        "health": 1,
+                        "protection_count": 0,
+                        "poison_count": 0,
+                        "antidote_count": 0,
+                        "badge_count": 0
+                    },
+                    "personal_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\n\n--- Role Introductions ---\nWerewolf Role Introduction:\nYou are a Werewolf. Your goal is to eliminate the villagers without being caught. Each night, you and your fellow\nwerewolves secretly choose one villager to eliminate. You must work together to deceive the other players during the\nday, while subtly protecting your fellow werewolves.\nTo better hide your identity, you may choose to pretend to be other roles to gain credibility. Since werewolves know each other's identities, pretending to be the Seer is a good way to gain villagers' trust.\nIf you manage to outnumber the villagers, you win the game.\n\n\nVillager Role Introduction:\nYou are a Villager. Your goal is to identify and eliminate the werewolves. During the day, you participate in discussions\nand voting to root out the werewolves. You have no special powers at night, but your ability to observe and reason\nis crucial to the village's survival. Work with other villagers and be careful whom you trust!\nAlthough you have no special skills, sometimes pretending to be another role can change the course of the game. For example, shielding a key player from harm could be your moment of glory.\n\n\nSeer Role Introduction:\nYou are the Seer. Each night, you can check the identity of one player to see whether they are a werewolf or not.\nYour knowledge is critical for the villagers' victory, so share it carefully. The werewolves will likely target you\nor pretend to be you to mislead others.\nAs the core of the good faction, the Seer is often the top target for werewolves to impersonate or kill. During the night, you should inspect players whose identities are uncertain (there is no need to check players who are highly suspected of being werewolves).\nWhen speaking during the day, your goal is to convince others that you are the real Seer. You must gather trust and\nshare your findings without exposing yourself too early. Even though revealing your identity might put you in danger,\na Seer trusted by both the Witch and the Guard can survive for at least three rounds if everyone acts accordingly.\nA good Seer will coordinate with the Witch and the Guard to divide responsibilities. For example, on the first night, the Guard protects the Seer, and the Witch doesn't use the antidote. On the second night, the Witch saves the Seer, and the Guard protects someone else.\n\n\nWitch Role Introduction:\nYou are the Witch. Each night, you will be told who has been attacked, and you must decide whether to use your antidote\nto save them or use your poison to eliminate another player. You only have one poison and one antidote, so use them wisely.\nDuring the daytime discussions, if the night ends without a death, you can reveal that you used your antidote to save someone, which may earn others' trust.\nTypically, you should use the antidote to save key players like the Seer, the Guard, or yourself, while the poison is best used to eliminate werewolves at night.\nHowever, be cautious: sometimes the werewolves will deliberately attack one of their own (self-knife strategy) to trick you into wasting the antidote, thereby boosting their credibility.\n\n\nGuard Role Introduction:\nYou are the Guard. Each night, you can choose one player to protect from being killed by the werewolves. You cannot protect\nthe same player two nights in a row. Your role is critical in keeping important players like the Seer or the Witch alive.\nYou are in a constant mental battle with the werewolves, trying to predict who they will target. It might not always be the Seer, as the werewolves might expect you to protect them and kill someone else. In general, you should avoid revealing your identity unless absolutely necessary.\n\n\n\n\nYou are Tarah, your role in this game is guard.\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard action processed. Dorothy is protected this night.\nGuard has chosen to protect a player.\nWerewolves have chosen their target.\nSeer has checked a player's identity.\nWitch has made her decision on potion use."
+                },
+                "Dorothy": {
+                    "role": "wolf",
+                    "status": {
+                        "health": 1,
+                        "protection_count": 1,
+                        "poison_count": 0,
+                        "antidote_count": 0,
+                        "badge_count": 0
+                    },
+                    "personal_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\n\n--- Role Introductions ---\nWerewolf Role Introduction:\nYou are a Werewolf. Your goal is to eliminate the villagers without being caught. Each night, you and your fellow\nwerewolves secretly choose one villager to eliminate. You must work together to deceive the other players during the\nday, while subtly protecting your fellow werewolves.\nTo better hide your identity, you may choose to pretend to be other roles to gain credibility. Since werewolves know each other's identities, pretending to be the Seer is a good way to gain villagers' trust.\nIf you manage to outnumber the villagers, you win the game.\n\n\nVillager Role Introduction:\nYou are a Villager. Your goal is to identify and eliminate the werewolves. During the day, you participate in discussions\nand voting to root out the werewolves. You have no special powers at night, but your ability to observe and reason\nis crucial to the village's survival. Work with other villagers and be careful whom you trust!\nAlthough you have no special skills, sometimes pretending to be another role can change the course of the game. For example, shielding a key player from harm could be your moment of glory.\n\n\nSeer Role Introduction:\nYou are the Seer. Each night, you can check the identity of one player to see whether they are a werewolf or not.\nYour knowledge is critical for the villagers' victory, so share it carefully. The werewolves will likely target you\nor pretend to be you to mislead others.\nAs the core of the good faction, the Seer is often the top target for werewolves to impersonate or kill. During the night, you should inspect players whose identities are uncertain (there is no need to check players who are highly suspected of being werewolves).\nWhen speaking during the day, your goal is to convince others that you are the real Seer. You must gather trust and\nshare your findings without exposing yourself too early. Even though revealing your identity might put you in danger,\na Seer trusted by both the Witch and the Guard can survive for at least three rounds if everyone acts accordingly.\nA good Seer will coordinate with the Witch and the Guard to divide responsibilities. For example, on the first night, the Guard protects the Seer, and the Witch doesn't use the antidote. On the second night, the Witch saves the Seer, and the Guard protects someone else.\n\n\nWitch Role Introduction:\nYou are the Witch. Each night, you will be told who has been attacked, and you must decide whether to use your antidote\nto save them or use your poison to eliminate another player. You only have one poison and one antidote, so use them wisely.\nDuring the daytime discussions, if the night ends without a death, you can reveal that you used your antidote to save someone, which may earn others' trust.\nTypically, you should use the antidote to save key players like the Seer, the Guard, or yourself, while the poison is best used to eliminate werewolves at night.\nHowever, be cautious: sometimes the werewolves will deliberately attack one of their own (self-knife strategy) to trick you into wasting the antidote, thereby boosting their credibility.\n\n\nGuard Role Introduction:\nYou are the Guard. Each night, you can choose one player to protect from being killed by the werewolves. You cannot protect\nthe same player two nights in a row. Your role is critical in keeping important players like the Seer or the Witch alive.\nYou are in a constant mental battle with the werewolves, trying to predict who they will target. It might not always be the Seer, as the werewolves might expect you to protect them and kill someone else. In general, you should avoid revealing your identity unless absolutely necessary.\n\n\n\n\nYou are Dorothy, your role in this game is wolf.\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard has chosen to protect a player.\nRound Details:\n - Round Targets: {'Dorothy': 'Mathew', 'Darryl': 'Mathew', 'Nicole': 'Barry'}\n - Remaining Werewolves: ['Dorothy', 'Darryl', 'Nicole']\n - Discussion Rounds Left: 1\n - Final Target: Mathew\n\nWerewolves have chosen their target.\nSeer has checked a player's identity.\nWitch has made her decision on potion use."
+                },
+                "Mathew": {
+                    "role": "witch",
+                    "status": {
+                        "health": 0,
+                        "protection_count": 0,
+                        "poison_count": 0,
+                        "antidote_count": 1,
+                        "badge_count": 0
+                    },
+                    "personal_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\n\n--- Role Introductions ---\nWerewolf Role Introduction:\nYou are a Werewolf. Your goal is to eliminate the villagers without being caught. Each night, you and your fellow\nwerewolves secretly choose one villager to eliminate. You must work together to deceive the other players during the\nday, while subtly protecting your fellow werewolves.\nTo better hide your identity, you may choose to pretend to be other roles to gain credibility. Since werewolves know each other's identities, pretending to be the Seer is a good way to gain villagers' trust.\nIf you manage to outnumber the villagers, you win the game.\n\n\nVillager Role Introduction:\nYou are a Villager. Your goal is to identify and eliminate the werewolves. During the day, you participate in discussions\nand voting to root out the werewolves. You have no special powers at night, but your ability to observe and reason\nis crucial to the village's survival. Work with other villagers and be careful whom you trust!\nAlthough you have no special skills, sometimes pretending to be another role can change the course of the game. For example, shielding a key player from harm could be your moment of glory.\n\n\nSeer Role Introduction:\nYou are the Seer. Each night, you can check the identity of one player to see whether they are a werewolf or not.\nYour knowledge is critical for the villagers' victory, so share it carefully. The werewolves will likely target you\nor pretend to be you to mislead others.\nAs the core of the good faction, the Seer is often the top target for werewolves to impersonate or kill. During the night, you should inspect players whose identities are uncertain (there is no need to check players who are highly suspected of being werewolves).\nWhen speaking during the day, your goal is to convince others that you are the real Seer. You must gather trust and\nshare your findings without exposing yourself too early. Even though revealing your identity might put you in danger,\na Seer trusted by both the Witch and the Guard can survive for at least three rounds if everyone acts accordingly.\nA good Seer will coordinate with the Witch and the Guard to divide responsibilities. For example, on the first night, the Guard protects the Seer, and the Witch doesn't use the antidote. On the second night, the Witch saves the Seer, and the Guard protects someone else.\n\n\nWitch Role Introduction:\nYou are the Witch. Each night, you will be told who has been attacked, and you must decide whether to use your antidote\nto save them or use your poison to eliminate another player. You only have one poison and one antidote, so use them wisely.\nDuring the daytime discussions, if the night ends without a death, you can reveal that you used your antidote to save someone, which may earn others' trust.\nTypically, you should use the antidote to save key players like the Seer, the Guard, or yourself, while the poison is best used to eliminate werewolves at night.\nHowever, be cautious: sometimes the werewolves will deliberately attack one of their own (self-knife strategy) to trick you into wasting the antidote, thereby boosting their credibility.\n\n\nGuard Role Introduction:\nYou are the Guard. Each night, you can choose one player to protect from being killed by the werewolves. You cannot protect\nthe same player two nights in a row. Your role is critical in keeping important players like the Seer or the Witch alive.\nYou are in a constant mental battle with the werewolves, trying to predict who they will target. It might not always be the Seer, as the werewolves might expect you to protect them and kill someone else. In general, you should avoid revealing your identity unless absolutely necessary.\n\n\n\n\nYou are Mathew, your role in this game is witch.\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard has chosen to protect a player.\nWerewolves have chosen their target.\nSeer has checked a player's identity.\nWitch used poison on Barry.\nWitch has made her decision on potion use."
+                },
+                "Barry": {
+                    "role": "villager",
+                    "status": {
+                        "health": 0,
+                        "protection_count": 0,
+                        "poison_count": 0,
+                        "antidote_count": 0,
+                        "badge_count": 0
+                    },
+                    "personal_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\n\n--- Role Introductions ---\nWerewolf Role Introduction:\nYou are a Werewolf. Your goal is to eliminate the villagers without being caught. Each night, you and your fellow\nwerewolves secretly choose one villager to eliminate. You must work together to deceive the other players during the\nday, while subtly protecting your fellow werewolves.\nTo better hide your identity, you may choose to pretend to be other roles to gain credibility. Since werewolves know each other's identities, pretending to be the Seer is a good way to gain villagers' trust.\nIf you manage to outnumber the villagers, you win the game.\n\n\nVillager Role Introduction:\nYou are a Villager. Your goal is to identify and eliminate the werewolves. During the day, you participate in discussions\nand voting to root out the werewolves. You have no special powers at night, but your ability to observe and reason\nis crucial to the village's survival. Work with other villagers and be careful whom you trust!\nAlthough you have no special skills, sometimes pretending to be another role can change the course of the game. For example, shielding a key player from harm could be your moment of glory.\n\n\nSeer Role Introduction:\nYou are the Seer. Each night, you can check the identity of one player to see whether they are a werewolf or not.\nYour knowledge is critical for the villagers' victory, so share it carefully. The werewolves will likely target you\nor pretend to be you to mislead others.\nAs the core of the good faction, the Seer is often the top target for werewolves to impersonate or kill. During the night, you should inspect players whose identities are uncertain (there is no need to check players who are highly suspected of being werewolves).\nWhen speaking during the day, your goal is to convince others that you are the real Seer. You must gather trust and\nshare your findings without exposing yourself too early. Even though revealing your identity might put you in danger,\na Seer trusted by both the Witch and the Guard can survive for at least three rounds if everyone acts accordingly.\nA good Seer will coordinate with the Witch and the Guard to divide responsibilities. For example, on the first night, the Guard protects the Seer, and the Witch doesn't use the antidote. On the second night, the Witch saves the Seer, and the Guard protects someone else.\n\n\nWitch Role Introduction:\nYou are the Witch. Each night, you will be told who has been attacked, and you must decide whether to use your antidote\nto save them or use your poison to eliminate another player. You only have one poison and one antidote, so use them wisely.\nDuring the daytime discussions, if the night ends without a death, you can reveal that you used your antidote to save someone, which may earn others' trust.\nTypically, you should use the antidote to save key players like the Seer, the Guard, or yourself, while the poison is best used to eliminate werewolves at night.\nHowever, be cautious: sometimes the werewolves will deliberately attack one of their own (self-knife strategy) to trick you into wasting the antidote, thereby boosting their credibility.\n\n\nGuard Role Introduction:\nYou are the Guard. Each night, you can choose one player to protect from being killed by the werewolves. You cannot protect\nthe same player two nights in a row. Your role is critical in keeping important players like the Seer or the Witch alive.\nYou are in a constant mental battle with the werewolves, trying to predict who they will target. It might not always be the Seer, as the werewolves might expect you to protect them and kill someone else. In general, you should avoid revealing your identity unless absolutely necessary.\n\n\n\n\nYou are Barry, your role in this game is villager.\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard has chosen to protect a player.\nWerewolves have chosen their target.\nSeer has checked a player's identity.\nWitch has made her decision on potion use."
+                },
+                "Bonnie": {
+                    "role": "villager",
+                    "status": {
+                        "health": 1,
+                        "protection_count": 0,
+                        "poison_count": 0,
+                        "antidote_count": 0,
+                        "badge_count": 0
+                    },
+                    "personal_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\n\n--- Role Introductions ---\nWerewolf Role Introduction:\nYou are a Werewolf. Your goal is to eliminate the villagers without being caught. Each night, you and your fellow\nwerewolves secretly choose one villager to eliminate. You must work together to deceive the other players during the\nday, while subtly protecting your fellow werewolves.\nTo better hide your identity, you may choose to pretend to be other roles to gain credibility. Since werewolves know each other's identities, pretending to be the Seer is a good way to gain villagers' trust.\nIf you manage to outnumber the villagers, you win the game.\n\n\nVillager Role Introduction:\nYou are a Villager. Your goal is to identify and eliminate the werewolves. During the day, you participate in discussions\nand voting to root out the werewolves. You have no special powers at night, but your ability to observe and reason\nis crucial to the village's survival. Work with other villagers and be careful whom you trust!\nAlthough you have no special skills, sometimes pretending to be another role can change the course of the game. For example, shielding a key player from harm could be your moment of glory.\n\n\nSeer Role Introduction:\nYou are the Seer. Each night, you can check the identity of one player to see whether they are a werewolf or not.\nYour knowledge is critical for the villagers' victory, so share it carefully. The werewolves will likely target you\nor pretend to be you to mislead others.\nAs the core of the good faction, the Seer is often the top target for werewolves to impersonate or kill. During the night, you should inspect players whose identities are uncertain (there is no need to check players who are highly suspected of being werewolves).\nWhen speaking during the day, your goal is to convince others that you are the real Seer. You must gather trust and\nshare your findings without exposing yourself too early. Even though revealing your identity might put you in danger,\na Seer trusted by both the Witch and the Guard can survive for at least three rounds if everyone acts accordingly.\nA good Seer will coordinate with the Witch and the Guard to divide responsibilities. For example, on the first night, the Guard protects the Seer, and the Witch doesn't use the antidote. On the second night, the Witch saves the Seer, and the Guard protects someone else.\n\n\nWitch Role Introduction:\nYou are the Witch. Each night, you will be told who has been attacked, and you must decide whether to use your antidote\nto save them or use your poison to eliminate another player. You only have one poison and one antidote, so use them wisely.\nDuring the daytime discussions, if the night ends without a death, you can reveal that you used your antidote to save someone, which may earn others' trust.\nTypically, you should use the antidote to save key players like the Seer, the Guard, or yourself, while the poison is best used to eliminate werewolves at night.\nHowever, be cautious: sometimes the werewolves will deliberately attack one of their own (self-knife strategy) to trick you into wasting the antidote, thereby boosting their credibility.\n\n\nGuard Role Introduction:\nYou are the Guard. Each night, you can choose one player to protect from being killed by the werewolves. You cannot protect\nthe same player two nights in a row. Your role is critical in keeping important players like the Seer or the Witch alive.\nYou are in a constant mental battle with the werewolves, trying to predict who they will target. It might not always be the Seer, as the werewolves might expect you to protect them and kill someone else. In general, you should avoid revealing your identity unless absolutely necessary.\n\n\n\n\nYou are Bonnie, your role in this game is villager.\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard has chosen to protect a player.\nWerewolves have chosen their target.\nSeer has checked a player's identity.\nWitch has made her decision on potion use."
+                },
+                "Darryl": {
+                    "role": "wolf",
+                    "status": {
+                        "health": 1,
+                        "protection_count": 0,
+                        "poison_count": 0,
+                        "antidote_count": 0,
+                        "badge_count": 0
+                    },
+                    "personal_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\n\n--- Role Introductions ---\nWerewolf Role Introduction:\nYou are a Werewolf. Your goal is to eliminate the villagers without being caught. Each night, you and your fellow\nwerewolves secretly choose one villager to eliminate. You must work together to deceive the other players during the\nday, while subtly protecting your fellow werewolves.\nTo better hide your identity, you may choose to pretend to be other roles to gain credibility. Since werewolves know each other's identities, pretending to be the Seer is a good way to gain villagers' trust.\nIf you manage to outnumber the villagers, you win the game.\n\n\nVillager Role Introduction:\nYou are a Villager. Your goal is to identify and eliminate the werewolves. During the day, you participate in discussions\nand voting to root out the werewolves. You have no special powers at night, but your ability to observe and reason\nis crucial to the village's survival. Work with other villagers and be careful whom you trust!\nAlthough you have no special skills, sometimes pretending to be another role can change the course of the game. For example, shielding a key player from harm could be your moment of glory.\n\n\nSeer Role Introduction:\nYou are the Seer. Each night, you can check the identity of one player to see whether they are a werewolf or not.\nYour knowledge is critical for the villagers' victory, so share it carefully. The werewolves will likely target you\nor pretend to be you to mislead others.\nAs the core of the good faction, the Seer is often the top target for werewolves to impersonate or kill. During the night, you should inspect players whose identities are uncertain (there is no need to check players who are highly suspected of being werewolves).\nWhen speaking during the day, your goal is to convince others that you are the real Seer. You must gather trust and\nshare your findings without exposing yourself too early. Even though revealing your identity might put you in danger,\na Seer trusted by both the Witch and the Guard can survive for at least three rounds if everyone acts accordingly.\nA good Seer will coordinate with the Witch and the Guard to divide responsibilities. For example, on the first night, the Guard protects the Seer, and the Witch doesn't use the antidote. On the second night, the Witch saves the Seer, and the Guard protects someone else.\n\n\nWitch Role Introduction:\nYou are the Witch. Each night, you will be told who has been attacked, and you must decide whether to use your antidote\nto save them or use your poison to eliminate another player. You only have one poison and one antidote, so use them wisely.\nDuring the daytime discussions, if the night ends without a death, you can reveal that you used your antidote to save someone, which may earn others' trust.\nTypically, you should use the antidote to save key players like the Seer, the Guard, or yourself, while the poison is best used to eliminate werewolves at night.\nHowever, be cautious: sometimes the werewolves will deliberately attack one of their own (self-knife strategy) to trick you into wasting the antidote, thereby boosting their credibility.\n\n\nGuard Role Introduction:\nYou are the Guard. Each night, you can choose one player to protect from being killed by the werewolves. You cannot protect\nthe same player two nights in a row. Your role is critical in keeping important players like the Seer or the Witch alive.\nYou are in a constant mental battle with the werewolves, trying to predict who they will target. It might not always be the Seer, as the werewolves might expect you to protect them and kill someone else. In general, you should avoid revealing your identity unless absolutely necessary.\n\n\n\n\nYou are Darryl, your role in this game is wolf.\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard has chosen to protect a player.\nRound Details:\n - Round Targets: {'Dorothy': 'Mathew', 'Darryl': 'Mathew', 'Nicole': 'Barry'}\n - Remaining Werewolves: ['Dorothy', 'Darryl', 'Nicole']\n - Discussion Rounds Left: 1\n - Final Target: Mathew\n\nWerewolves have chosen their target.\nSeer has checked a player's identity.\nWitch has made her decision on potion use."
+                },
+                "Kimberly": {
+                    "role": "villager",
+                    "status": {
+                        "health": 1,
+                        "protection_count": 0,
+                        "poison_count": 0,
+                        "antidote_count": 0,
+                        "badge_count": 0
+                    },
+                    "personal_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\n\n--- Role Introductions ---\nWerewolf Role Introduction:\nYou are a Werewolf. Your goal is to eliminate the villagers without being caught. Each night, you and your fellow\nwerewolves secretly choose one villager to eliminate. You must work together to deceive the other players during the\nday, while subtly protecting your fellow werewolves.\nTo better hide your identity, you may choose to pretend to be other roles to gain credibility. Since werewolves know each other's identities, pretending to be the Seer is a good way to gain villagers' trust.\nIf you manage to outnumber the villagers, you win the game.\n\n\nVillager Role Introduction:\nYou are a Villager. Your goal is to identify and eliminate the werewolves. During the day, you participate in discussions\nand voting to root out the werewolves. You have no special powers at night, but your ability to observe and reason\nis crucial to the village's survival. Work with other villagers and be careful whom you trust!\nAlthough you have no special skills, sometimes pretending to be another role can change the course of the game. For example, shielding a key player from harm could be your moment of glory.\n\n\nSeer Role Introduction:\nYou are the Seer. Each night, you can check the identity of one player to see whether they are a werewolf or not.\nYour knowledge is critical for the villagers' victory, so share it carefully. The werewolves will likely target you\nor pretend to be you to mislead others.\nAs the core of the good faction, the Seer is often the top target for werewolves to impersonate or kill. During the night, you should inspect players whose identities are uncertain (there is no need to check players who are highly suspected of being werewolves).\nWhen speaking during the day, your goal is to convince others that you are the real Seer. You must gather trust and\nshare your findings without exposing yourself too early. Even though revealing your identity might put you in danger,\na Seer trusted by both the Witch and the Guard can survive for at least three rounds if everyone acts accordingly.\nA good Seer will coordinate with the Witch and the Guard to divide responsibilities. For example, on the first night, the Guard protects the Seer, and the Witch doesn't use the antidote. On the second night, the Witch saves the Seer, and the Guard protects someone else.\n\n\nWitch Role Introduction:\nYou are the Witch. Each night, you will be told who has been attacked, and you must decide whether to use your antidote\nto save them or use your poison to eliminate another player. You only have one poison and one antidote, so use them wisely.\nDuring the daytime discussions, if the night ends without a death, you can reveal that you used your antidote to save someone, which may earn others' trust.\nTypically, you should use the antidote to save key players like the Seer, the Guard, or yourself, while the poison is best used to eliminate werewolves at night.\nHowever, be cautious: sometimes the werewolves will deliberately attack one of their own (self-knife strategy) to trick you into wasting the antidote, thereby boosting their credibility.\n\n\nGuard Role Introduction:\nYou are the Guard. Each night, you can choose one player to protect from being killed by the werewolves. You cannot protect\nthe same player two nights in a row. Your role is critical in keeping important players like the Seer or the Witch alive.\nYou are in a constant mental battle with the werewolves, trying to predict who they will target. It might not always be the Seer, as the werewolves might expect you to protect them and kill someone else. In general, you should avoid revealing your identity unless absolutely necessary.\n\n\n\n\nYou are Kimberly, your role in this game is villager.\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard has chosen to protect a player.\nWerewolves have chosen their target.\nSeer has checked a player's identity.\nWitch has made her decision on potion use."
+                },
+                "Katharine": {
+                    "role": "seer",
+                    "status": {
+                        "health": 1,
+                        "protection_count": 0,
+                        "poison_count": 0,
+                        "antidote_count": 0,
+                        "badge_count": 0,
+                        "check_history": {
+                            "Night 1": {
+                                "player": "Dorothy",
+                                "result": "werewolf"
+                            }
+                        }
+                    },
+                    "personal_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\n\n--- Role Introductions ---\nWerewolf Role Introduction:\nYou are a Werewolf. Your goal is to eliminate the villagers without being caught. Each night, you and your fellow\nwerewolves secretly choose one villager to eliminate. You must work together to deceive the other players during the\nday, while subtly protecting your fellow werewolves.\nTo better hide your identity, you may choose to pretend to be other roles to gain credibility. Since werewolves know each other's identities, pretending to be the Seer is a good way to gain villagers' trust.\nIf you manage to outnumber the villagers, you win the game.\n\n\nVillager Role Introduction:\nYou are a Villager. Your goal is to identify and eliminate the werewolves. During the day, you participate in discussions\nand voting to root out the werewolves. You have no special powers at night, but your ability to observe and reason\nis crucial to the village's survival. Work with other villagers and be careful whom you trust!\nAlthough you have no special skills, sometimes pretending to be another role can change the course of the game. For example, shielding a key player from harm could be your moment of glory.\n\n\nSeer Role Introduction:\nYou are the Seer. Each night, you can check the identity of one player to see whether they are a werewolf or not.\nYour knowledge is critical for the villagers' victory, so share it carefully. The werewolves will likely target you\nor pretend to be you to mislead others.\nAs the core of the good faction, the Seer is often the top target for werewolves to impersonate or kill. During the night, you should inspect players whose identities are uncertain (there is no need to check players who are highly suspected of being werewolves).\nWhen speaking during the day, your goal is to convince others that you are the real Seer. You must gather trust and\nshare your findings without exposing yourself too early. Even though revealing your identity might put you in danger,\na Seer trusted by both the Witch and the Guard can survive for at least three rounds if everyone acts accordingly.\nA good Seer will coordinate with the Witch and the Guard to divide responsibilities. For example, on the first night, the Guard protects the Seer, and the Witch doesn't use the antidote. On the second night, the Witch saves the Seer, and the Guard protects someone else.\n\n\nWitch Role Introduction:\nYou are the Witch. Each night, you will be told who has been attacked, and you must decide whether to use your antidote\nto save them or use your poison to eliminate another player. You only have one poison and one antidote, so use them wisely.\nDuring the daytime discussions, if the night ends without a death, you can reveal that you used your antidote to save someone, which may earn others' trust.\nTypically, you should use the antidote to save key players like the Seer, the Guard, or yourself, while the poison is best used to eliminate werewolves at night.\nHowever, be cautious: sometimes the werewolves will deliberately attack one of their own (self-knife strategy) to trick you into wasting the antidote, thereby boosting their credibility.\n\n\nGuard Role Introduction:\nYou are the Guard. Each night, you can choose one player to protect from being killed by the werewolves. You cannot protect\nthe same player two nights in a row. Your role is critical in keeping important players like the Seer or the Witch alive.\nYou are in a constant mental battle with the werewolves, trying to predict who they will target. It might not always be the Seer, as the werewolves might expect you to protect them and kill someone else. In general, you should avoid revealing your identity unless absolutely necessary.\n\n\n\n\nYou are Katharine, your role in this game is seer.\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard has chosen to protect a player.\nWerewolves have chosen their target.\nAt Night 1, You have checked Dorothy, the result is: werewolf.\nSeer has checked a player's identity.\nWitch has made her decision on potion use."
+                },
+                "Nicole": {
+                    "role": "wolf",
+                    "status": {
+                        "health": 1,
+                        "protection_count": 0,
+                        "poison_count": 0,
+                        "antidote_count": 0,
+                        "badge_count": 0
+                    },
+                    "personal_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\n\n--- Role Introductions ---\nWerewolf Role Introduction:\nYou are a Werewolf. Your goal is to eliminate the villagers without being caught. Each night, you and your fellow\nwerewolves secretly choose one villager to eliminate. You must work together to deceive the other players during the\nday, while subtly protecting your fellow werewolves.\nTo better hide your identity, you may choose to pretend to be other roles to gain credibility. Since werewolves know each other's identities, pretending to be the Seer is a good way to gain villagers' trust.\nIf you manage to outnumber the villagers, you win the game.\n\n\nVillager Role Introduction:\nYou are a Villager. Your goal is to identify and eliminate the werewolves. During the day, you participate in discussions\nand voting to root out the werewolves. You have no special powers at night, but your ability to observe and reason\nis crucial to the village's survival. Work with other villagers and be careful whom you trust!\nAlthough you have no special skills, sometimes pretending to be another role can change the course of the game. For example, shielding a key player from harm could be your moment of glory.\n\n\nSeer Role Introduction:\nYou are the Seer. Each night, you can check the identity of one player to see whether they are a werewolf or not.\nYour knowledge is critical for the villagers' victory, so share it carefully. The werewolves will likely target you\nor pretend to be you to mislead others.\nAs the core of the good faction, the Seer is often the top target for werewolves to impersonate or kill. During the night, you should inspect players whose identities are uncertain (there is no need to check players who are highly suspected of being werewolves).\nWhen speaking during the day, your goal is to convince others that you are the real Seer. You must gather trust and\nshare your findings without exposing yourself too early. Even though revealing your identity might put you in danger,\na Seer trusted by both the Witch and the Guard can survive for at least three rounds if everyone acts accordingly.\nA good Seer will coordinate with the Witch and the Guard to divide responsibilities. For example, on the first night, the Guard protects the Seer, and the Witch doesn't use the antidote. On the second night, the Witch saves the Seer, and the Guard protects someone else.\n\n\nWitch Role Introduction:\nYou are the Witch. Each night, you will be told who has been attacked, and you must decide whether to use your antidote\nto save them or use your poison to eliminate another player. You only have one poison and one antidote, so use them wisely.\nDuring the daytime discussions, if the night ends without a death, you can reveal that you used your antidote to save someone, which may earn others' trust.\nTypically, you should use the antidote to save key players like the Seer, the Guard, or yourself, while the poison is best used to eliminate werewolves at night.\nHowever, be cautious: sometimes the werewolves will deliberately attack one of their own (self-knife strategy) to trick you into wasting the antidote, thereby boosting their credibility.\n\n\nGuard Role Introduction:\nYou are the Guard. Each night, you can choose one player to protect from being killed by the werewolves. You cannot protect\nthe same player two nights in a row. Your role is critical in keeping important players like the Seer or the Witch alive.\nYou are in a constant mental battle with the werewolves, trying to predict who they will target. It might not always be the Seer, as the werewolves might expect you to protect them and kill someone else. In general, you should avoid revealing your identity unless absolutely necessary.\n\n\n\n\nYou are Nicole, your role in this game is wolf.\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard has chosen to protect a player.\nRound Details:\n - Round Targets: {'Dorothy': 'Mathew', 'Darryl': 'Mathew', 'Nicole': 'Barry'}\n - Remaining Werewolves: ['Dorothy', 'Darryl', 'Nicole']\n - Discussion Rounds Left: 1\n - Final Target: Mathew\n\nWerewolves have chosen their target.\nSeer has checked a player's identity.\nWitch has made her decision on potion use."
+                }
+            },
+            "guard_last_night_protect": "Dorothy",
+            "werewolf_action": {
+                "rounds_remaining": 1,
+                "alive_werewolves": [],
+                "round_targets": [
+                    {
+                        "Dorothy": "Mathew",
+                        "Darryl": "Barry",
+                        "Nicole": "Kimberly"
+                    },
+                    {
+                        "Dorothy": "Kimberly",
+                        "Darryl": "Mathew",
+                        "Nicole": "Barry"
+                    },
+                    {
+                        "Dorothy": "Mathew",
+                        "Darryl": "Barry",
+                        "Nicole": "Kimberly"
+                    },
+                    {
+                        "Dorothy": "Barry",
+                        "Darryl": "Mathew",
+                        "Nicole": "Katharine"
+                    },
+                    {
+                        "Dorothy": "Mathew",
+                        "Darryl": "Mathew",
+                        "Nicole": "Barry"
+                    }
+                ],
+                "final_target": "Mathew"
+            },
+            "night_cache": [
+                {
+                    "player_dead_tonight": [
+                        "Mathew",
+                        "Barry"
+                    ],
+                    "guard_action": "Dorothy",
+                    "werewolf_action": {
+                        "final_target": "Mathew",
+                        "attack_successful": true
+                    },
+                    "witch_action": {
+                        "action": "poison",
+                        "target": "Barry"
+                    }
+                }
+            ]
+        },
+        "public_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard has chosen to protect a player.\nWerewolves have chosen their target.\nSeer has checked a player's identity.\nWitch has made her decision on potion use.",
+        "private_event_log": "Welcome to the Werewolf Game! In this game, players take on various roles, each with specific abilities.\nThe game alternates between day and night phases. During the night, special roles perform their actions.\nDuring the day, players discuss and vote to eliminate suspects. The goal is for the villagers to eliminate\nall the werewolves, while the werewolves aim to outnumber the villagers. Be careful who you trust!\n\nWerewolf game starting. Initializing day-night cycle.\nSYSTEM: Starting day-night cycle for Day 1\nSYSTEM: Night 1 begins. Werewolves and special roles take actions.\nGuard action processed. Dorothy is protected this night.\nGuard has chosen to protect a player.\nRound Details:\n - Round Targets: {'Dorothy': 'Mathew', 'Darryl': 'Mathew', 'Nicole': 'Barry'}\n - Remaining Werewolves: ['Dorothy', 'Darryl', 'Nicole']\n - Discussion Rounds Left: 1\n - Final Target: Mathew\n - Attack Successful: True\nResult: Target Mathew attacked by werewolves and health reduced.\nWerewolves have chosen their target.\nSystem log - Seer action:\n - Seer ID: Katharine\n - Night 1: Checked Dorothy - Result: werewolf\nSeer has checked a player's identity.\nWitch used poison on Barry.\nWitch used poison on Barry.\nWitch has made her decision on potion use."
+    },
+    "scores": {
+        "villager": {
+            "total": -2,
+            "details": [
+                "Witch killed non-werewolf Barry with poison. -2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 1,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "env_name": "predictdesign_werewolf_41_Night1",
+    "agents": [
+        {
+            "role": "guard",
+            "is_villager": true,
+            "number": 1,
+            "config": {
+                "agent_id": "Tarah",
+                "villager_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "werewolf_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "llm_sampling": {
+                    "temperature": 0,
+                    "top_p": 1.0,
+                    "max_tokens": 8192
+                },
+                "log_werewolf_llm_io": true,
+                "log_werewolf_llm_max_chars": 100000,
+                "log_raw_tool_calls": false,
+                "log_raw_tool_max_chars": 200000
+            }
+        },
+        {
+            "role": "wolf",
+            "is_villager": false,
+            "number": 2,
+            "config": {
+                "agent_id": "Dorothy",
+                "villager_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "werewolf_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "llm_sampling": {
+                    "temperature": 0,
+                    "top_p": 1.0,
+                    "max_tokens": 8192
+                },
+                "log_werewolf_llm_io": true,
+                "log_werewolf_llm_max_chars": 100000,
+                "log_raw_tool_calls": false,
+                "log_raw_tool_max_chars": 200000
+            }
+        },
+        {
+            "role": "witch",
+            "is_villager": true,
+            "number": 3,
+            "config": {
+                "agent_id": "Mathew",
+                "villager_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "werewolf_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "llm_sampling": {
+                    "temperature": 0,
+                    "top_p": 1.0,
+                    "max_tokens": 8192
+                },
+                "log_werewolf_llm_io": true,
+                "log_werewolf_llm_max_chars": 100000,
+                "log_raw_tool_calls": false,
+                "log_raw_tool_max_chars": 200000
+            }
+        },
+        {
+            "role": "villager",
+            "is_villager": true,
+            "number": 4,
+            "config": {
+                "agent_id": "Barry",
+                "villager_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "werewolf_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "llm_sampling": {
+                    "temperature": 0,
+                    "top_p": 1.0,
+                    "max_tokens": 8192
+                },
+                "log_werewolf_llm_io": true,
+                "log_werewolf_llm_max_chars": 100000,
+                "log_raw_tool_calls": false,
+                "log_raw_tool_max_chars": 200000
+            }
+        },
+        {
+            "role": "villager",
+            "is_villager": true,
+            "number": 5,
+            "config": {
+                "agent_id": "Bonnie",
+                "villager_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "werewolf_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "llm_sampling": {
+                    "temperature": 0,
+                    "top_p": 1.0,
+                    "max_tokens": 8192
+                },
+                "log_werewolf_llm_io": true,
+                "log_werewolf_llm_max_chars": 100000,
+                "log_raw_tool_calls": false,
+                "log_raw_tool_max_chars": 200000
+            }
+        },
+        {
+            "role": "wolf",
+            "is_villager": false,
+            "number": 6,
+            "config": {
+                "agent_id": "Darryl",
+                "villager_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "werewolf_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "llm_sampling": {
+                    "temperature": 0,
+                    "top_p": 1.0,
+                    "max_tokens": 8192
+                },
+                "log_werewolf_llm_io": true,
+                "log_werewolf_llm_max_chars": 100000,
+                "log_raw_tool_calls": false,
+                "log_raw_tool_max_chars": 200000
+            }
+        },
+        {
+            "role": "villager",
+            "is_villager": true,
+            "number": 7,
+            "config": {
+                "agent_id": "Kimberly",
+                "villager_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "werewolf_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "llm_sampling": {
+                    "temperature": 0,
+                    "top_p": 1.0,
+                    "max_tokens": 8192
+                },
+                "log_werewolf_llm_io": true,
+                "log_werewolf_llm_max_chars": 100000,
+                "log_raw_tool_calls": false,
+                "log_raw_tool_max_chars": 200000
+            }
+        },
+        {
+            "role": "seer",
+            "is_villager": true,
+            "number": 8,
+            "config": {
+                "agent_id": "Katharine",
+                "villager_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "werewolf_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "llm_sampling": {
+                    "temperature": 0,
+                    "top_p": 1.0,
+                    "max_tokens": 8192
+                },
+                "log_werewolf_llm_io": true,
+                "log_werewolf_llm_max_chars": 100000,
+                "log_raw_tool_calls": false,
+                "log_raw_tool_max_chars": 200000
+            }
+        },
+        {
+            "role": "wolf",
+            "is_villager": false,
+            "number": 9,
+            "config": {
+                "agent_id": "Nicole",
+                "villager_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "werewolf_config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+                    "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+                },
+                "llm_sampling": {
+                    "temperature": 0,
+                    "top_p": 1.0,
+                    "max_tokens": 8192
+                },
+                "log_werewolf_llm_io": true,
+                "log_werewolf_llm_max_chars": 100000,
+                "log_raw_tool_calls": false,
+                "log_raw_tool_max_chars": 200000
+            }
+        }
+    ],
+    "shared_memory_path": "results/werewolf\\game_20260427_185725\\shared_memory.json",
+    "some_log_dir": null
+}

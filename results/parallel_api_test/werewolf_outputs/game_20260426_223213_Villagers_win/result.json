@@ -1,0 +1,99 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "guard",
+            "wolf",
+            "wolf",
+            "villager",
+            "villager",
+            "villager",
+            "seer",
+            "wolf",
+            "witch"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 10.7,
+            "details": [
+                "Villager Gertrude voted for werewolf Rebecca. +0.2 points.",
+                "Villager Lawrence voted for villager Edward. -0.1 points.",
+                "Villager Lena voted for werewolf Chris. +0.2 points.",
+                "Villager Katharine voted for villager Tamara. -0.1 points.",
+                "Villager Tamara voted for villager Lena. -0.1 points.",
+                "Villager Edward voted for villager Lawrence. -0.1 points.",
+                "Witch killed non-werewolf Katharine with poison. -2 points.",
+                "Day 2: Seer Tamara survived. +1 point.",
+                "Werewolf Chris was banished. +2 points.",
+                "Villager Gertrude voted for werewolf Chris. +0.2 points.",
+                "Villager Lena voted for werewolf Rebecca. +0.2 points.",
+                "Villager Tamara voted for werewolf Rebecca. +0.2 points.",
+                "Villager Edward voted for werewolf Chris. +0.2 points.",
+                "Day 3: Seer Tamara survived. +1 point.",
+                "Werewolf Rebecca was banished. +2 points.",
+                "Villager Gertrude voted for werewolf Rebecca. +0.2 points.",
+                "Villager Lena voted for werewolf Rebecca. +0.2 points.",
+                "Villager Tamara voted for werewolf Rebecca. +0.2 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Lena",
+                    "description": "Guard successfully protected Lena from werewolf attack."
+                },
+                "Day 4: Seer Tamara survived. +1 point.",
+                "Werewolf Tommy was banished. +2 points.",
+                "Villager Gertrude voted for werewolf Tommy. +0.2 points.",
+                "Villager Lena voted for villager Gertrude. -0.1 points.",
+                "Villager Tamara voted for werewolf Tommy. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 5,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Lawrence was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 3,
+    "surviving_players": [
+        {
+            "player_id": "Gertrude",
+            "role": "guard"
+        },
+        {
+            "player_id": "Lena",
+            "role": "villager"
+        },
+        {
+            "player_id": "Tamara",
+            "role": "seer"
+        }
+    ],
+    "game_result": "Villagers win"
+}

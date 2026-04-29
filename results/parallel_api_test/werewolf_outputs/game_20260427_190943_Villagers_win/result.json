@@ -1,0 +1,84 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "wolf",
+            "villager",
+            "villager",
+            "seer",
+            "witch",
+            "guard",
+            "wolf",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 7.8000000000000025,
+            "details": [
+                "Werewolf Anthony was banished. +2 points.",
+                "Villager Charlie voted for werewolf Anthony. +0.2 points.",
+                "Villager John voted for werewolf Anthony. +0.2 points.",
+                "Villager Rachel voted for werewolf Anthony. +0.2 points.",
+                "Villager Jose voted for werewolf Anthony. +0.2 points.",
+                "Witch killed non-werewolf Janet with poison. -2 points.",
+                "Werewolf Anthony was banished. +2 points.",
+                "Villager Charlie voted for villager Jose. -0.1 points.",
+                "Villager John voted for werewolf Anthony. +0.2 points.",
+                "Villager Rachel voted for werewolf Anthony. +0.2 points.",
+                "Villager Sadie voted for villager Rachel. -0.1 points.",
+                "Villager Jose voted for werewolf Anthony. +0.2 points.",
+                "Werewolf Anthony was banished. +2 points.",
+                "Villager John voted for werewolf Anthony. +0.2 points.",
+                "Villager Rachel voted for werewolf Anthony. +0.2 points.",
+                "Villager Sadie voted for villager John. -0.1 points.",
+                "Villager John voted for werewolf Anthony. +0.2 points.",
+                "Villager Rachel voted for villager John. -0.1 points.",
+                "Werewolf Inez was banished. +2 points.",
+                "Villager Sadie voted for werewolf Inez. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 6,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf John was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 1,
+    "surviving_players": [
+        {
+            "player_id": "Sadie",
+            "role": "witch"
+        }
+    ],
+    "game_result": "Villagers win"
+}

@@ -1,0 +1,207 @@
+[
+  {
+    "task_description": "Software Development Task:\n\nPlease write a system called Collaborative Build Optimizer (CBO) that enhances the build process for software projects by integrating code efficiency analysis, task management, and build time estimation. Collaborative Build Optimizer is a comprehensive development tool designed to optimize the build process by analyzing code efficiency, managing development tasks with dependencies, and estimating build times, thereby improving overall development productivity and project management.\n\n1. Implementation requirements:\n\n2. Project structure:\n   - solution.py (main implementation)\n\n3. Development process:\n   - Developer: Create the code.\n   - Developer: Revise the code.\n   - Developer: Optimize the code.\n\nPlease work together to complete this task following software engineering best practices.",
+    "file_path": "solution.py",
+    "timestamp": "2026-04-27 11:32:48.529739",
+    "suggestion": "LOCATION: [BuildTimeEstimator.estimate_build_time]\nISSUE: [The task execution time simulation does not account for the actual dependencies' impact on build time. The current model assumes that tasks can be executed independently of each other, which is not realistic in a build process where tasks may need to wait for dependent tasks to complete.]\nSUGGESTION: [Modify the estimate_build_time method to consider the actual execution time of dependent tasks before estimating the time for a task. This can be done by maintaining a running total of the latest completion time for each task and using that to calculate the start time for dependent tasks.]",
+    "strategy": {
+      "strategies": [
+        {
+          "action": "replace",
+          "target": {
+            "code": "task_time = random.uniform(1, 5) / efficiency_scores[task]",
+            "before_context": "for task in task_order:",
+            "after_context": "total_time += task_time"
+          },
+          "new_code": "latest_completion_time = {task: 0.0 for task in task_order}\n        for task in task_order:\n            # Calculate the start time based on the latest completion time of its dependencies\n            start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n            task_time = random.uniform(1, 5) / efficiency_scores[task]\n            latest_completion_time[task] = start_time + task_time\n            total_time = max(total_time, latest_completion_time[task])"
+        }
+      ]
+    }
+  },
+  {
+    "task_description": "Software Development Task:\n\nPlease write a system called Collaborative Build Optimizer (CBO) that enhances the build process for software projects by integrating code efficiency analysis, task management, and build time estimation. Collaborative Build Optimizer is a comprehensive development tool designed to optimize the build process by analyzing code efficiency, managing development tasks with dependencies, and estimating build times, thereby improving overall development productivity and project management.\n\n1. Implementation requirements:\n\n2. Project structure:\n   - solution.py (main implementation)\n\n3. Development process:\n   - Developer: Create the code.\n   - Developer: Revise the code.\n   - Developer: Optimize the code.\n\nPlease work together to complete this task following software engineering best practices.",
+    "file_path": "solution.py",
+    "timestamp": "2026-04-27 12:05:16.413671",
+    "suggestion": "LOCATION: `BuildTimeEstimator.estimate_build_time`\nISSUE: The method incorrectly calculates the total build time by adding `task_time` to `total_time` outside the loop, which results in an incorrect total build time calculation.\nSUGGESTION: Remove the line `total_time += task_time` outside the loop and ensure `total_time` is updated correctly by using `total_time = max(total_time, latest_completion_time[task])` within the loop.",
+    "strategy": {
+      "strategies": [
+        {
+          "action": "delete",
+          "target": {
+            "code": "total_time += task_time",
+            "before_context": "latest_completion_time[task] = start_time + task_time",
+            "after_context": "return total_time"
+          },
+          "new_code": ""
+        },
+        {
+          "action": "replace",
+          "target": {
+            "code": "total_time = max(total_time, latest_completion_time[task])total_time += task_time",
+            "before_context": "latest_completion_time[task] = start_time + task_time",
+            "after_context": "return total_time"
+          },
+          "new_code": "total_time = max(total_time, latest_completion_time[task])"
+        }
+      ]
+    }
+  },
+  {
+    "task_description": "Software Development Task:\n\nPlease write a system called Collaborative Build Optimizer (CBO) that enhances the build process for software projects by integrating code efficiency analysis, task management, and build time estimation. Collaborative Build Optimizer is a comprehensive development tool designed to optimize the build process by analyzing code efficiency, managing development tasks with dependencies, and estimating build times, thereby improving overall development productivity and project management.\n\n1. Implementation requirements:\n\n2. Project structure:\n   - solution.py (main implementation)\n\n3. Development process:\n   - Developer: Create the code.\n   - Developer: Revise the code.\n   - Developer: Optimize the code.\n\nPlease work together to complete this task following software engineering best practices.",
+    "file_path": "solution.py",
+    "timestamp": "2026-04-27 12:05:36.516926",
+    "suggestion": "LOCATION: `BuildTimeEstimator.estimate_build_time` method\nISSUE: The method contains syntax errors and logical issues, such as undefined variables and misplaced code.\nSUGGESTION: Correct the syntax errors and ensure the logic properly calculates the build time based on task dependencies and efficiency scores. Here is the corrected version of the method:\n\n```python\ndef estimate_build_time(self, task_order, efficiency_scores, task_manager):\n    \"\"\"\n    Estimates the total build time.\n    :param task_order: list - Ordered list of task IDs.\n    :param efficiency_scores: dict - Dictionary of efficiency scores for each task.\n    :param task_manager: TaskManager - The task manager instance to access dependencies.\n    :return: float - Estimated build time in seconds.\n    \"\"\"\n    latest_completion_time = {task: 0.0 for task in task_order}\n    total_time = 0.0\n    for task in task_order:\n        # Calculate the start time based on the latest completion time of its dependencies\n        start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n        task_time = random.uniform(1, 5) / efficiency_scores[task]\n        latest_completion_time[task] = start_time + task_time\n        total_time = max(total_time, latest_completion_time[task])\n    return total_time\n```\n\nAdditionally, ensure that `task_manager` is passed to the `estimate_build_time` method when it is called in the `main` function.",
+    "strategy": {
+      "strategies": [
+        {
+          "action": "replace",
+          "target": {
+            "code": "latest_completion_time = {task: 0.0 for task in task_order}\n        for task in task_order:\n            # Calculate the start time based on the latest completion time of its dependencies\n            start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n            task_time = random.uniform(1, 5) / efficiency_scores[task]\n            latest_completion_time[task] = start_time + task_timetotal_time = max(total_time, latest_completion_time[task])return total_time",
+            "before_context": "def estimate_build_time(self, task_order, efficiency_scores):",
+            "after_context": "def main():"
+          },
+          "new_code": "latest_completion_time = {task: 0.0 for task in task_order}\n        total_time = 0.0\n        for task in task_order:\n            # Calculate the start time based on the latest completion time of its dependencies\n            start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n            task_time = random.uniform(1, 5) / efficiency_scores[task]\n            latest_completion_time[task] = start_time + task_time\n            total_time = max(total_time, latest_completion_time[task])\n        return total_time"
+        },
+        {
+          "action": "replace",
+          "target": {
+            "code": "estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)",
+            "before_context": "task_manager.mark_task_complete(task)\n        print(f\"Completed {task}\")\n\n    # Estimate build time\n    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)",
+            "after_context": "print(f\"Estimated build time: {estimated_time:.2f} seconds\")"
+          },
+          "new_code": "estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)"
+        }
+      ]
+    }
+  },
+  {
+    "task_description": "Software Development Task:\n\nPlease write a system called Collaborative Build Optimizer (CBO) that enhances the build process for software projects by integrating code efficiency analysis, task management, and build time estimation. Collaborative Build Optimizer is a comprehensive development tool designed to optimize the build process by analyzing code efficiency, managing development tasks with dependencies, and estimating build times, thereby improving overall development productivity and project management.\n\n1. Implementation requirements:\n\n2. Project structure:\n   - solution.py (main implementation)\n\n3. Development process:\n   - Developer: Create the code.\n   - Developer: Revise the code.\n   - Developer: Optimize the code.\n\nPlease work together to complete this task following software engineering best practices.",
+    "file_path": "solution.py",
+    "timestamp": "2026-04-27 12:08:19.891365",
+    "suggestion": "LOCATION: `BuildTimeEstimator.estimate_build_time` method\nISSUE: The method signature is incorrect and the method body has syntax errors. It is missing a parameter (`task_manager`) and there is a missing colon at the end of the `for` loop.\nSUGGESTION: Correct the method signature to include `task_manager` and add the missing colon. The corrected method should look like this:\n\n```python\ndef estimate_build_time(self, task_order, efficiency_scores, task_manager):\n    latest_completion_time = {task: 0.0 for task in task_order}\n    total_time = 0.0\n    for task in task_order:\n        # Calculate the start time based on the latest completion time of its dependencies\n        start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n        task_time = random.uniform(1, 5) / efficiency_scores[task]\n        latest_completion_time[task] = start_time + task_time\n        total_time = max(total_time, latest_completion_time[task])\n    return total_time\n```\n\nAdditionally, ensure that the `task_manager` is passed when calling `estimate_build_time` in the `main` function.",
+    "strategy": {
+      "strategies": [
+        {
+          "action": "replace",
+          "target": {
+            "code": "def estimate_build_time(self, task_order, efficiency_scores):latest_completion_time = {task: 0.0 for task in task_order}\n        total_time = 0.0\n        for task in task_order:\n            # Calculate the start time based on the latest completion time of its dependencies\n            start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n            task_time = random.uniform(1, 5) / efficiency_scores[task]\n            latest_completion_time[task] = start_time + task_time\n            total_time = max(total_time, latest_completion_time[task])\n        return total_timedef main():",
+            "before_context": "class BuildTimeEstimator:\n    \"\"\"\n    Estimates the build time based on task complexity and dependencies.\n    \"\"\"\n    def estimate_build_time(self, task_order, efficiency_scores):",
+            "after_context": "estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)print(f\"Estimated build time: {estimated_time:.2f} seconds\")"
+          },
+          "new_code": "def estimate_build_time(self, task_order, efficiency_scores, task_manager):\n    latest_completion_time = {task: 0.0 for task in task_order}\n    total_time = 0.0\n    for task in task_order:\n        # Calculate the start time based on the latest completion time of its dependencies\n        start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n        task_time = random.uniform(1, 5) / efficiency_scores[task]\n        latest_completion_time[task] = start_time + task_time\n        total_time = max(total_time, latest_completion_time[task])\n    return total_time\ndef main():"
+        },
+        {
+          "action": "replace",
+          "target": {
+            "code": "estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)print(f\"Estimated build time: {estimated_time:.2f} seconds\")",
+            "before_context": "task_manager.mark_task_complete(task)\n        print(f\"Completed {task}\")\n\n    # Estimate build time\n    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)print(f\"Estimated build time: {estimated_time:.2f} seconds\")",
+            "after_context": "if __name__ == \"__main__\":\n    main()"
+          },
+          "new_code": "estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)\nprint(f\"Estimated build time: {estimated_time:.2f} seconds\")"
+        }
+      ]
+    }
+  },
+  {
+    "task_description": "Software Development Task:\n\nPlease write a system called Collaborative Build Optimizer (CBO) that enhances the build process for software projects by integrating code efficiency analysis, task management, and build time estimation. Collaborative Build Optimizer is a comprehensive development tool designed to optimize the build process by analyzing code efficiency, managing development tasks with dependencies, and estimating build times, thereby improving overall development productivity and project management.\n\n1. Implementation requirements:\n\n2. Project structure:\n   - solution.py (main implementation)\n\n3. Development process:\n   - Developer: Create the code.\n   - Developer: Revise the code.\n   - Developer: Optimize the code.\n\nPlease work together to complete this task following software engineering best practices.",
+    "file_path": "solution.py",
+    "timestamp": "2026-04-27 12:08:45.575596",
+    "suggestion": "LOCATION: `BuildTimeEstimator.estimate_build_time` method definition\nISSUE: The method is incorrectly defined twice, with the second definition overwriting the first and missing a colon at the end of the first definition.\nSUGGESTION: Remove the duplicate method definition and ensure the first definition is correctly formatted with a colon at the end.\n\nCorrected snippet:\n```python\nclass BuildTimeEstimator:\n    \"\"\"\n    Estimates the build time based on task complexity and dependencies.\n    \"\"\"\n    def estimate_build_time(self, task_order, efficiency_scores, task_manager):\n        latest_completion_time = {task: 0.0 for task in task_order}\n        total_time = 0.0\n        for task in task_order:\n            # Calculate the start time based on the latest completion time of its dependencies\n            start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n            task_time = random.uniform(1, 5) / efficiency_scores[task]\n            latest_completion_time[task] = start_time + task_time\n            total_time = max(total_time, latest_completion_time[task])\n        return total_time\n```",
+    "strategy": {
+      "strategies": [
+        {
+          "action": "delete",
+          "target": {
+            "code": "def estimate_build_time(self, task_order, efficiency_scores):def estimate_build_time(self, task_order, efficiency_scores, task_manager):",
+            "before_context": "class BuildTimeEstimator:\n    \"\"\"\n    Estimates the build time based on task complexity and dependencies.\n    \"\"\"\n    def estimate_build_time(self, task_order, efficiency_scores):",
+            "after_context": "    latest_completion_time = {task: 0.0 for task in task_order}\n    total_time = 0.0\n    for task in task_order:"
+          },
+          "new_code": ""
+        },
+        {
+          "action": "replace",
+          "target": {
+            "code": "def estimate_build_time(self, task_order, efficiency_scores):",
+            "before_context": "class BuildTimeEstimator:\n    \"\"\"\n    Estimates the build time based on task complexity and dependencies.\n    \"\"\"\n    def estimate_build_time(self, task_order, efficiency_scores):",
+            "after_context": "    latest_completion_time = {task: 0.0 for task in task_order}\n    total_time = 0.0\n    for task in task_order:"
+          },
+          "new_code": "def estimate_build_time(self, task_order, efficiency_scores, task_manager):"
+        }
+      ]
+    }
+  },
+  {
+    "task_description": "Software Development Task:\n\nPlease write a system called Collaborative Build Optimizer (CBO) that enhances the build process for software projects by integrating code efficiency analysis, task management, and build time estimation. Collaborative Build Optimizer is a comprehensive development tool designed to optimize the build process by analyzing code efficiency, managing development tasks with dependencies, and estimating build times, thereby improving overall development productivity and project management.\n\n1. Implementation requirements:\n\n2. Project structure:\n   - solution.py (main implementation)\n\n3. Development process:\n   - Developer: Create the code.\n   - Developer: Revise the code.\n   - Developer: Optimize the code.\n\nPlease work together to complete this task following software engineering best practices.",
+    "file_path": "solution.py",
+    "timestamp": "2026-04-27 12:11:16.828191",
+    "suggestion": "LOCATION: `BuildTimeEstimator.estimate_build_time` method definition\nISSUE: The method is incorrectly defined twice, with the second definition overwriting the first and missing the `self` parameter.\nSUGGESTION: Remove the duplicate method definition and ensure the `estimate_build_time` method is correctly defined within the `BuildTimeEstimator` class, including the `self` parameter.",
+    "strategy": {
+      "strategies": [
+        {
+          "action": "delete",
+          "target": {
+            "code": "def estimate_build_time(self, task_order, efficiency_scores):def estimate_build_time(self, task_order, efficiency_scores, task_manager):",
+            "before_context": "class BuildTimeEstimator:",
+            "after_context": "    latest_completion_time = {task: 0.0 for task in task_order}"
+          },
+          "new_code": ""
+        },
+        {
+          "action": "replace",
+          "target": {
+            "code": "def estimate_build_time(self, task_order, efficiency_scores, task_manager):",
+            "before_context": "class BuildTimeEstimator:",
+            "after_context": "    latest_completion_time = {task: 0.0 for task in task_order}"
+          },
+          "new_code": "    def estimate_build_time(self, task_order, efficiency_scores, task_manager):\n        latest_completion_time = {task: 0.0 for task in task_order}\n        total_time = 0.0\n        for task in task_order:\n            # Calculate the start time based on the latest completion time of its dependencies\n            start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n            task_time = random.uniform(1, 5) / efficiency_scores[task]\n            latest_completion_time[task] = start_time + task_time\n            total_time = max(total_time, latest_completion_time[task])\n        return total_time"
+        },
+        {
+          "action": "replace",
+          "target": {
+            "code": "estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)",
+            "before_context": "if __name__ == \"__main__\":",
+            "after_context": "print(f\"Estimated build time: {estimated_time:.2f} seconds\")"
+          },
+          "new_code": "estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)"
+        }
+      ]
+    }
+  },
+  {
+    "task_description": "Software Development Task:\n\nPlease write a system called Collaborative Build Optimizer (CBO) that enhances the build process for software projects by integrating code efficiency analysis, task management, and build time estimation. Collaborative Build Optimizer is a comprehensive development tool designed to optimize the build process by analyzing code efficiency, managing development tasks with dependencies, and estimating build times, thereby improving overall development productivity and project management.\n\n1. Implementation requirements:\n\n2. Project structure:\n   - solution.py (main implementation)\n\n3. Development process:\n   - Developer: Create the code.\n   - Developer: Revise the code.\n   - Developer: Optimize the code.\n\nPlease work together to complete this task following software engineering best practices.",
+    "file_path": "solution.py",
+    "timestamp": "2026-04-27 12:11:53.794492",
+    "suggestion": "LOCATION: `BuildTimeEstimator` class and `main` function\nISSUE: The `BuildTimeEstimator` class is missing proper encapsulation and the `main` function is incorrectly calling the `estimate_build_time` method without passing all required arguments.\nSUGGESTION: Encapsulate the `estimate_build_time` method within the `BuildTimeEstimator` class and ensure that all necessary arguments are passed when calling the method in the `main` function. Additionally, initialize the `BuildTimeEstimator` and other necessary objects before using them in `main`.\n\nHere is a revised version of the relevant parts:\n\n```python\nclass BuildTimeEstimator:\n    def estimate_build_time(self, task_order, efficiency_scores, task_manager):\n        latest_completion_time = {task: 0.0 for task in task_order}\n        total_time = 0.0\n        for task in task_order:\n            # Calculate the start time based on the latest completion time of its dependencies\n            start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n            task_time = random.uniform(1, 5) / efficiency_scores[task]\n            latest_completion_time[task] = start_time + task_time\n            total_time = max(total_time, latest_completion_time[task])\n        return total_time\n\ndef main():\n    task_manager = TaskManager()\n    task_manager.add_task(\"task1\")\n    task_manager.add_task(\"task2\", dependencies=[\"task1\"])\n    task_manager.add_task(\"task3\", dependencies=[\"task1\"])\n    task_manager.add_task(\"task4\", dependencies=[\"task2\", \"task3\"])\n\n    task_order = task_manager.get_task_order()\n    code_analyzer = CodeEfficiencyAnalyzer()\n    efficiency_scores = {task: code_analyzer.analyze_code(f\"code for {task}\") for task in task_order}\n\n    build_estimator = BuildTimeEstimator()\n    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)\n    print(f\"Estimated build time: {estimated_time:.2f} seconds\")\n\nif __name__ == \"__main__\":\n    main()\n```",
+    "strategy": {
+      "strategies": [
+        {
+          "action": "replace",
+          "target": {
+            "code": "class BuildTimeEstimator:    def estimate_build_time(self, task_order, efficiency_scores, task_manager):\n        latest_completion_time = {task: 0.0 for task in task_order}\n        total_time = 0.0\n        for task in task_order:\n            # Calculate the start time based on the latest completion time of its dependencies\n            start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n            task_time = random.uniform(1, 5) / efficiency_scores[task]\n            latest_completion_time[task] = start_time + task_time\n            total_time = max(total_time, latest_completion_time[task])\n        return total_time\n    latest_completion_time = {task: 0.0 for task in task_order}\n    total_time = 0.0\n    for task in task_order:\n        # Calculate the start time based on the latest completion time of its dependencies\n        start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n        task_time = random.uniform(1, 5) / efficiency_scores[task]\n        latest_completion_time[task] = start_time + task_time\n        total_time = max(total_time, latest_completion_time[task])\n    return total_time",
+            "before_context": "class TaskManager:\n    def mark_task_complete(self, task_id):\n        if task_id in self.tasks:\n            self.tasks[task_id] = True\n\nclass BuildTimeEstimator:",
+            "after_context": "def main():\n    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)\n    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)\n    print(f\"Estimated build time: {estimated_time:.2f} seconds\")"
+          },
+          "new_code": "    def estimate_build_time(self, task_order, efficiency_scores, task_manager):\n        latest_completion_time = {task: 0.0 for task in task_order}\n        total_time = 0.0\n        for task in task_order:\n            # Calculate the start time based on the latest completion time of its dependencies\n            start_time = max(latest_completion_time[dep] for dep in task_manager.dependencies[task]) if task_manager.dependencies[task] else 0.0\n            task_time = random.uniform(1, 5) / efficiency_scores[task]\n            latest_completion_time[task] = start_time + task_time\n            total_time = max(total_time, latest_completion_time[task])\n        return total_time"
+        },
+        {
+          "action": "replace",
+          "target": {
+            "code": "estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)\n    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)",
+            "before_context": "    task_order = task_manager.get_task_order()\n    code_analyzer = CodeEfficiencyAnalyzer()\n    efficiency_scores = {task: code_analyzer.analyze_code(f\"code for {task}\") for task in task_order}\n\n    build_estimator = BuildTimeEstimator()\n    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)",
+            "after_context": "    print(f\"Estimated build time: {estimated_time:.2f} seconds\")"
+          },
+          "new_code": "    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)"
+        },
+        {
+          "action": "add",
+          "target": {
+            "code": "def main():",
+            "before_context": "    return total_time\n\ndef main():",
+            "after_context": "    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores)\n    estimated_time = build_estimator.estimate_build_time(task_order, efficiency_scores, task_manager)"
+          },
+          "new_code": "    task_manager = TaskManager()\n    task_manager.add_task(\"task1\")\n    task_manager.add_task(\"task2\", dependencies=[\"task1\"])\n    task_manager.add_task(\"task3\", dependencies=[\"task1\"])\n    task_manager.add_task(\"task4\", dependencies=[\"task2\", \"task3\"])\n\n    task_order = task_manager.get_task_order()\n    code_analyzer = CodeEfficiencyAnalyzer()\n    efficiency_scores = {task: code_analyzer.analyze_code(f\"code for {task}\") for task in task_order}\n\n    build_estimator = BuildTimeEstimator()"
+        }
+      ]
+    }
+  }
+]

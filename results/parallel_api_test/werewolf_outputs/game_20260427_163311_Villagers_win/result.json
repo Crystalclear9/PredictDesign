@@ -1,0 +1,96 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "seer",
+            "villager",
+            "witch",
+            "villager",
+            "wolf",
+            "guard",
+            "wolf",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 11.399999999999995,
+            "details": [
+                {
+                    "event": "guard_protection",
+                    "target": "Patricia",
+                    "description": "Guard successfully protected Patricia from werewolf attack."
+                },
+                "Villager Lorenzo voted for villager Jeffery. -0.1 points.",
+                "Villager Bennie voted for villager Jeffery. -0.1 points.",
+                "Villager Craig voted for villager Jeffery. -0.1 points.",
+                "Villager Patricia voted for villager Jeffery. -0.1 points.",
+                "Villager Jeffery voted for villager Jeffery. -0.1 points.",
+                "Villager Edith voted for villager Jeffery. -0.1 points.",
+                "Witch killed werewolf David with poison. +2 points.",
+                "Day 2: Seer Bennie survived. +1 point.",
+                "Villager Lorenzo voted for werewolf Caleb. +0.2 points.",
+                "Villager Bennie voted for werewolf Adolfo. +0.2 points.",
+                "Villager Craig voted for werewolf Caleb. +0.2 points.",
+                "Day 3: Seer Bennie survived. +1 point.",
+                "Werewolf Caleb was banished. +2 points.",
+                "Villager Lorenzo voted for werewolf Caleb. +0.2 points.",
+                "Villager Bennie voted for werewolf Caleb. +0.2 points.",
+                "Villager Craig voted for werewolf Caleb. +0.2 points.",
+                "Villager Patricia voted for werewolf Caleb. +0.2 points.",
+                "Werewolf Adolfo was banished. +2 points.",
+                "Villager Lorenzo voted for werewolf Caleb. +0.2 points.",
+                "Villager Craig voted for werewolf Adolfo. +0.2 points.",
+                "Villager Patricia voted for werewolf Adolfo. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 4,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Jeffery was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 3,
+    "surviving_players": [
+        {
+            "player_id": "Lorenzo",
+            "role": "villager"
+        },
+        {
+            "player_id": "Craig",
+            "role": "villager"
+        },
+        {
+            "player_id": "Patricia",
+            "role": "witch"
+        }
+    ],
+    "game_result": "Villagers win"
+}

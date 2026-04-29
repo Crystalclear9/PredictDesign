@@ -1,0 +1,84 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "witch",
+            "wolf",
+            "seer",
+            "wolf",
+            "villager",
+            "villager",
+            "guard",
+            "villager",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 9.1,
+            "details": [
+                "Villager Lee voted for villager Ronald. -0.1 points.",
+                "Villager Melva voted for villager Ronald. -0.1 points.",
+                "Villager Dianne voted for villager Ronald. -0.1 points.",
+                "Villager Helen voted for villager Ronald. -0.1 points.",
+                "Villager Ronald voted for villager Ronald. -0.1 points.",
+                "Witch killed werewolf Linda with poison. +2 points.",
+                "Day 2: Seer Melva survived. +1 point.",
+                "Villager Lee voted for villager Helen. -0.1 points.",
+                "Villager Melva voted for villager Ronald. -0.1 points.",
+                "Villager Helen voted for villager Lee. -0.1 points.",
+                "Villager Michael voted for villager Lee. -0.1 points.",
+                "Day 3: Seer Melva survived. +1 point.",
+                "Werewolf Cody was banished. +2 points.",
+                "Villager Melva voted for werewolf Cody. +0.2 points.",
+                "Villager Helen voted for werewolf Cody. +0.2 points.",
+                "Villager Michael voted for werewolf Cody. +0.2 points.",
+                "Day 4: Seer Melva survived. +1 point.",
+                "Villager Melva voted for werewolf Cody. +0.2 points.",
+                "Werewolf Erica was banished. +2 points.",
+                "Villager Michael voted for werewolf Erica. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 6,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Ronald was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Lee was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 1,
+    "surviving_players": [
+        {
+            "player_id": "Michael",
+            "role": "guard"
+        }
+    ],
+    "game_result": "Villagers win"
+}

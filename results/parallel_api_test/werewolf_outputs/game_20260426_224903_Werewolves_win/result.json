@@ -1,0 +1,76 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "villager",
+            "villager",
+            "witch",
+            "guard",
+            "wolf",
+            "wolf",
+            "seer",
+            "villager",
+            "wolf"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 3.9,
+            "details": [
+                "Villager April voted for villager William. -0.1 points.",
+                "Villager Rex voted for villager Joseph. -0.1 points.",
+                "Villager Robert voted for villager William. -0.1 points.",
+                "Day 2: Seer Robert survived. +1 point.",
+                "Villager April voted for werewolf Kelly. +0.2 points.",
+                "Villager Joseph voted for villager Norma. -0.1 points.",
+                "Villager Robert voted for villager Joseph. -0.1 points.",
+                "Witch killed non-werewolf April with poison. -2 points.",
+                "Day 3: Seer Robert survived. +1 point.",
+                "Werewolf Josh was banished. +2 points.",
+                "Villager Robert voted for werewolf Josh. +0.2 points.",
+                "Werewolf Kelly was banished. +2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 6,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf William was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Norma was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": -1,
+    "surviving_players": [
+        {
+            "player_id": "Tina",
+            "role": "wolf"
+        }
+    ],
+    "game_result": "Werewolves win"
+}

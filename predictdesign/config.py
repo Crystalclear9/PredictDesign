@@ -5,9 +5,9 @@ from dataclasses import dataclass, field
 
 @dataclass(slots=True)
 class LLMApiConfig:
-    api_key: str = "sk-atbmbuobehrzbiagahmshyrdksemgfkztnljehdnojlakwkq"
+    api_key: str = "sk-ucnvgmqkwumgbwibyfexhmqznzgtqdlskstgexnfwbvntheu"
     base_url: str = "https://api.siliconflow.cn/v1"
-    model: str = "Qwen/Qwen3-32B"
+    model: str = "Qwen/Qwen2.5-Coder-32B-Instruct"
     temperature: float = 0.1
     max_tokens: int = 4096
     timeout: float = 600.0

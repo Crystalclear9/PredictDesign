@@ -1,0 +1,84 @@
+{
+    "config": {
+        "openai_api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+        "log_werewolf_llm_io": true,
+        "log_werewolf_llm_max_chars": 100000,
+        "llm_sampling": {
+            "temperature": 0,
+            "top_p": 1.0,
+            "max_tokens": 8192
+        },
+        "system_prompt_path": "core/agent/werewolf_prompts/system_prompt.yaml",
+        "roles": [
+            "witch",
+            "wolf",
+            "villager",
+            "villager",
+            "villager",
+            "guard",
+            "wolf",
+            "wolf",
+            "seer"
+        ],
+        "randomize_roles": true,
+        "use_random_names": true,
+        "villager_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "werewolf_config": {
+            "base_url": "https://api.siliconflow.cn/v1",
+            "api_key": "sk-jziqbgnrgdxjskuzlypnegszwvfzhmzvwpmxcdprmsdltvri",
+            "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct"
+        },
+        "cooperation_mode": "cooperative",
+        "use_daily_tasks": true
+    },
+    "process_scores": {
+        "villager": {
+            "total": 3.1000000000000005,
+            "details": [
+                "Villager Charlene voted for villager Wilbur. -0.1 points.",
+                "Villager Steven voted for villager Steven. -0.1 points.",
+                "Villager William voted for villager Steven. -0.1 points.",
+                "Villager Wilbur voted for villager Steven. -0.1 points.",
+                {
+                    "event": "guard_protection",
+                    "target": "Phillip",
+                    "description": "Guard successfully protected Phillip from werewolf attack."
+                },
+                "Witch killed non-werewolf William with poison. -2 points.",
+                "Day 2: Seer Phillip survived. +1 point.",
+                "Villager Charlene voted for villager Wilbur. -0.1 points.",
+                "Villager Wilbur voted for villager Steven. -0.1 points.",
+                "Villager Phillip voted for villager Wilbur. -0.1 points.",
+                "Villager Charlene voted for werewolf Stacey. +0.2 points.",
+                "Villager Wilbur voted for werewolf Stacey. +0.2 points.",
+                "Villager Charlene voted for werewolf Stacey. +0.2 points.",
+                "Werewolf Stacey was banished. +2 points.",
+                "Villager Charlene voted for werewolf Stacey. +0.2 points."
+            ]
+        },
+        "werewolf": {
+            "total": 7,
+            "details": [
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Non-werewolf Steven was banished. Werewolves +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point.",
+                "Werewolves has unified their goal. Werewolf +1 point."
+            ]
+        }
+    },
+    "result_score": 1,
+    "surviving_players": [
+        {
+            "player_id": "Charlene",
+            "role": "witch"
+        }
+    ],
+    "game_result": "Villagers win"
+}
