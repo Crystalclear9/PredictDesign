@@ -60,8 +60,8 @@ def demo_with_nodes(system: PredictDesignSystem) -> None:
             TemporalNode.build("reviewer_0", "reviewer", context=None, context_dim=16, device="cpu"),
         ],
         edges=[
-            TemporalEdge("planner_0", "coder_0", 0.0, 5.0),
-            TemporalEdge("coder_0", "reviewer_0", 1.0, 5.0),
+            TemporalEdge("planner_0", "coder_0", 0.0),
+            TemporalEdge("coder_0", "reviewer_0", 1.0),
         ],
     )
     system.ingest_messages([

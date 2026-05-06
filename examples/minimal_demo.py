@@ -39,8 +39,8 @@ def main() -> None:
             TemporalNode.build("critic", "reviewer", context=None, context_dim=8, device="cpu"),
         ],
         edges=[
-            TemporalEdge("user_proxy", "engineer", 0.0, 5.0),
-            TemporalEdge("engineer", "critic", 1.0, 5.0),
+            TemporalEdge("user_proxy", "engineer", 0.0),
+            TemporalEdge("engineer", "critic", 1.0),
         ],
     )
     system.ingest_messages(
@@ -74,4 +74,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

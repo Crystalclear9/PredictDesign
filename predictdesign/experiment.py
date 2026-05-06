@@ -41,6 +41,8 @@ class PredictDesignSystem(nn.Module):
         self.message_aggregator = message_aggregator or ConcurrentMessageAggregator(
             message_encoder=self.message_encoder,
             reduce=self.config.concurrent_update_mode,
+            num_heads=self.config.aggregator_num_heads,
+            dropout=self.config.aggregator_dropout,
         )
         self.state_updater = state_updater or build_state_updater(
             updater_type=self.config.state_updater_type,
@@ -154,14 +156,12 @@ class PredictDesignSystem(nn.Module):
         source_node_id: str,
         target_node_id: str,
         start_time: float,
-        end_time: float,
     ) -> None:
         self.temporal_graph.add_edge(
             TemporalEdge(
                 source_node_id=source_node_id,
                 target_node_id=target_node_id,
                 start_time=start_time,
-                end_time=end_time,
             )
         )
 

@@ -432,7 +432,6 @@ def _build_initial_graph(
                     source_node_id=edge.source_node_id,
                     target_node_id=edge.target_node_id,
                     start_time=edge.start_time,
-                    end_time=edge.end_time,
                 )
             )
     for source_node_id, target_node_id in episode.initial_structural_edges:
@@ -482,7 +481,6 @@ def _edge_to_dict(edge: TemporalEdge) -> dict[str, Any]:
         "source_node_id": edge.source_node_id,
         "target_node_id": edge.target_node_id,
         "start_time": float(edge.start_time),
-        "end_time": float(edge.end_time),
     }
 
 
@@ -566,7 +564,6 @@ def _apply_actions_to_graph(
                     source_node_id=action.source_node_id,
                     target_node_id=action.target_node_id,
                     start_time=action.effective_time,
-                    end_time=action.effective_time + 1.0,
                 )
             )
         elif action.action_type == GraphActionType.REMOVE_EDGE:

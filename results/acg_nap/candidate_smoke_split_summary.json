@@ -1,0 +1,58 @@
+{
+  "acg_nap_root": "C:\\Users\\70454\\Desktop\\PredictDesign\\acg_nap",
+  "train_fraction": 0.8,
+  "seed": 7,
+  "candidate_relation_types": [
+    "activate",
+    "delegate",
+    "delegate_return",
+    "retry"
+  ],
+  "candidate_new_roles": [
+    "planner",
+    "coding_analyst",
+    "coding_implementation",
+    "coding_tester",
+    "coding_debugger",
+    "coding_reviewer",
+    "researcher"
+  ],
+  "combined": {
+    "train_episode_count": 2,
+    "eval_episode_count": 2,
+    "train_episode_ids": [
+      "coding_Qwen_Qwen3-Coder-30B-A3B-Instruct_task_1",
+      "research_Qwen_Qwen3-Coder-30B-A3B-Instruct_task_1"
+    ],
+    "eval_episode_ids": [
+      "coding_Qwen_Qwen3-Coder-30B-A3B-Instruct_task_10",
+      "research_Qwen_Qwen3-Coder-30B-A3B-Instruct_task_10"
+    ]
+  },
+  "datasets": {
+    "coding": {
+      "source_count": 2,
+      "episode_count": 2,
+      "train_episode_count": 1,
+      "eval_episode_count": 1,
+      "train_episode_ids": [
+        "coding_Qwen_Qwen3-Coder-30B-A3B-Instruct_task_1"
+      ],
+      "eval_episode_ids": [
+        "coding_Qwen_Qwen3-Coder-30B-A3B-Instruct_task_10"
+      ]
+    },
+    "research": {
+      "source_count": 2,
+      "episode_count": 2,
+      "train_episode_count": 1,
+      "eval_episode_count": 1,
+      "train_episode_ids": [
+        "research_Qwen_Qwen3-Coder-30B-A3B-Instruct_task_1"
+      ],
+      "eval_episode_ids": [
+        "research_Qwen_Qwen3-Coder-30B-A3B-Instruct_task_10"
+      ]
+    }
+  }
+}

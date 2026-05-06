@@ -1,0 +1,190 @@
+[
+  {
+    "dataset_name": "parallel_api_test_all",
+    "message_reduce": "attention",
+    "state_updater": "gru",
+    "gnn_type": "gcn",
+    "total_steps": 144,
+    "correct_steps": 93,
+    "accuracy": 0.6458333333333334,
+    "hit_ks": [
+      1,
+      3,
+      5
+    ],
+    "hit_counts": {
+      "1": 93,
+      "3": 98,
+      "5": 101
+    },
+    "hit_at_k": {
+      "1": 0.6458333333333334,
+      "3": 0.6805555555555556,
+      "5": 0.7013888888888888
+    },
+    "train_episode_count": 123,
+    "eval_episode_count": 29,
+    "one_step_correct_steps": 62,
+    "one_step_accuracy": 0.4305555555555556,
+    "one_step_hit_counts": {
+      "1": 62,
+      "3": 64,
+      "5": 66
+    },
+    "one_step_hit_at_k": {
+      "1": 0.4305555555555556,
+      "3": 0.4444444444444444,
+      "5": 0.4583333333333333
+    },
+    "rollout_total_actions": 501,
+    "rollout_exact_correct_actions": 158,
+    "rollout_exact_accuracy": 0.3153692614770459,
+    "rollout_subgraph_correct_actions": 231,
+    "rollout_subgraph_accuracy": 0.46107784431137727,
+    "subgraph_precision": 0.3816568047337278,
+    "subgraph_recall": 0.1987673343605547,
+    "subgraph_f1": 0.26139817629179335,
+    "cv_fold_count": 1
+  },
+  {
+    "dataset_name": "coding",
+    "message_reduce": "attention",
+    "state_updater": "gru",
+    "gnn_type": "gcn",
+    "total_steps": 48,
+    "correct_steps": 48,
+    "accuracy": 1.0,
+    "hit_ks": [
+      1,
+      3,
+      5
+    ],
+    "hit_counts": {
+      "1": 48,
+      "3": 48,
+      "5": 48
+    },
+    "hit_at_k": {
+      "1": 1.0,
+      "3": 1.0,
+      "5": 1.0
+    },
+    "train_episode_count": 123,
+    "eval_episode_count": 12,
+    "one_step_correct_steps": 40,
+    "one_step_accuracy": 0.8333333333333334,
+    "one_step_hit_counts": {
+      "1": 40,
+      "3": 40,
+      "5": 40
+    },
+    "one_step_hit_at_k": {
+      "1": 0.8333333333333334,
+      "3": 0.8333333333333334,
+      "5": 0.8333333333333334
+    },
+    "rollout_total_actions": 108,
+    "rollout_exact_correct_actions": 93,
+    "rollout_exact_accuracy": 0.8611111111111112,
+    "rollout_subgraph_correct_actions": 108,
+    "rollout_subgraph_accuracy": 1.0,
+    "subgraph_precision": 1.0,
+    "subgraph_recall": 0.8,
+    "subgraph_f1": 0.888888888888889,
+    "cv_fold_count": 1
+  },
+  {
+    "dataset_name": "research",
+    "message_reduce": "attention",
+    "state_updater": "gru",
+    "gnn_type": "gcn",
+    "total_steps": 18,
+    "correct_steps": 16,
+    "accuracy": 0.8888888888888888,
+    "hit_ks": [
+      1,
+      3,
+      5
+    ],
+    "hit_counts": {
+      "1": 16,
+      "3": 16,
+      "5": 16
+    },
+    "hit_at_k": {
+      "1": 0.8888888888888888,
+      "3": 0.8888888888888888,
+      "5": 0.8888888888888888
+    },
+    "train_episode_count": 123,
+    "eval_episode_count": 9,
+    "one_step_correct_steps": 10,
+    "one_step_accuracy": 0.5555555555555556,
+    "one_step_hit_counts": {
+      "1": 10,
+      "3": 10,
+      "5": 10
+    },
+    "one_step_hit_at_k": {
+      "1": 0.5555555555555556,
+      "3": 0.5555555555555556,
+      "5": 0.5555555555555556
+    },
+    "rollout_total_actions": 27,
+    "rollout_exact_correct_actions": 18,
+    "rollout_exact_accuracy": 0.6666666666666666,
+    "rollout_subgraph_correct_actions": 24,
+    "rollout_subgraph_accuracy": 0.8888888888888888,
+    "subgraph_precision": 0.8421052631578947,
+    "subgraph_recall": 0.43243243243243246,
+    "subgraph_f1": 0.5714285714285715,
+    "cv_fold_count": 1
+  },
+  {
+    "dataset_name": "werewolf",
+    "message_reduce": "attention",
+    "state_updater": "gru",
+    "gnn_type": "gcn",
+    "total_steps": 78,
+    "correct_steps": 29,
+    "accuracy": 0.3717948717948718,
+    "hit_ks": [
+      1,
+      3,
+      5
+    ],
+    "hit_counts": {
+      "1": 29,
+      "3": 34,
+      "5": 37
+    },
+    "hit_at_k": {
+      "1": 0.3717948717948718,
+      "3": 0.4358974358974359,
+      "5": 0.47435897435897434
+    },
+    "train_episode_count": 123,
+    "eval_episode_count": 8,
+    "one_step_correct_steps": 12,
+    "one_step_accuracy": 0.15384615384615385,
+    "one_step_hit_counts": {
+      "1": 12,
+      "3": 14,
+      "5": 16
+    },
+    "one_step_hit_at_k": {
+      "1": 0.15384615384615385,
+      "3": 0.1794871794871795,
+      "5": 0.20512820512820512
+    },
+    "rollout_total_actions": 366,
+    "rollout_exact_correct_actions": 47,
+    "rollout_exact_accuracy": 0.1284153005464481,
+    "rollout_subgraph_correct_actions": 99,
+    "rollout_subgraph_accuracy": 0.27049180327868855,
+    "subgraph_precision": 0.23985239852398524,
+    "subgraph_recall": 0.11775362318840579,
+    "subgraph_f1": 0.15795868772782504,
+    "cv_fold_count": 1
+  }
+]

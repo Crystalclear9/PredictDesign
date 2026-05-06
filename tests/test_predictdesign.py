@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 
 from predictdesign import (
+    ACGNapAdapter,
     BenchmarkEvaluator,
     BenchmarkEpisode,
     EpisodeStep,
@@ -17,6 +18,7 @@ from predictdesign import (
     PredictDesignSystem,
     TemporalEdge,
     TemporalNode,
+    load_acg_nap_corpus,
 )
 from predictdesign.benchmark.multiagentbench import MultiAgentBenchAdapter
 from predictdesign.benchmark.rich_log import train_mlp_on_rich_log, write_rich_log
@@ -24,6 +26,8 @@ from predictdesign.benchmark.trainer import BenchmarkTrainer
 from predictdesign.messages import Message
 from predictdesign.prediction import PredictedGraphAction
 from predictdesign.state_update import MDPStateUpdater, build_state_updater
+
+MISSING_ST_MODEL = "__missing_sentence_transformer_model__"
 
 
 class PredictDesignTests(unittest.TestCase):
@@ -39,6 +43,7 @@ class PredictDesignTests(unittest.TestCase):
             gnn_type="gcn",
             prediction_horizon=2,
             candidate_new_roles=("planner", "coder"),
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         system = PredictDesignSystem(config=config)
         system.initialize_graph(
@@ -71,6 +76,7 @@ class PredictDesignTests(unittest.TestCase):
     def test_concurrent_message_reduce_modes_are_switchable(self) -> None:
         sum_system = self._build_system(concurrent_mode="sum")
         mean_system = self._build_system(concurrent_mode="mean")
+        attention_system = self._build_system(concurrent_mode="attention")
         messages = [
             Message.build_completion_message(
                 time=1.0,
@@ -91,10 +97,14 @@ class PredictDesignTests(unittest.TestCase):
         ]
         sum_system.ingest_messages(messages)
         mean_system.ingest_messages(messages)
+        attention_system.ingest_messages(messages)
         sum_state = sum_system.ctdg.get_state("b")
         mean_state = mean_system.ctdg.get_state("b")
+        attention_state = attention_system.ctdg.get_state("b")
         self.assertEqual(sum_state.shape, mean_state.shape)
+        self.assertEqual(sum_state.shape, attention_state.shape)
         self.assertFalse(torch.allclose(sum_state, mean_state))
+        self.assertFalse(torch.allclose(attention_state, mean_state))
 
     def test_predict_rollout_returns_configured_horizon(self) -> None:
         system = self._build_system()
@@ -149,6 +159,7 @@ class PredictDesignTests(unittest.TestCase):
             hidden_dim=12,
             prediction_horizon=1,
             candidate_new_roles=("planner", "coder"),
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         system = PredictDesignSystem(config=config)
         system.initialize_graph(nodes=[], edges=[])
@@ -165,6 +176,7 @@ class PredictDesignTests(unittest.TestCase):
             hidden_dim=12,
             prediction_horizon=1,
             candidate_new_roles=("planner", "coder"),
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         system = PredictDesignSystem(config=config)
         parse_result = system.initialize_from_query(
@@ -180,7 +192,7 @@ class PredictDesignTests(unittest.TestCase):
 
     def test_temporal_edge_features_include_time_fields(self) -> None:
         system = self._build_system()
-        system.add_edge("a", "b", start_time=1.0, end_time=5.0)
+        system.add_edge("a", "b", start_time=1.0)
         features = system.temporal_graph.temporal_edge_features(
             time_value=3.0,
             node_order=["a", "b"],
@@ -191,12 +203,21 @@ class PredictDesignTests(unittest.TestCase):
         self.assertGreater(float(features[0, 1, 2].item()), 0.0)
         self.assertGreater(float(features[0, 1, 3].item()), 0.0)
 
+    def test_remove_edge_drops_it_from_current_temporal_graph(self) -> None:
+        system = self._build_system()
+        system.add_edge("a", "b", start_time=1.0)
+        self.assertTrue(system.temporal_graph.has_active_edge("a", "b", 2.0))
+        removed = system.temporal_graph.deactivate_edge("a", "b", 2.0)
+        self.assertTrue(removed)
+        self.assertFalse(system.temporal_graph.has_active_edge("a", "b", 2.0))
+
     def test_predictor_augments_edge_features_with_semantics(self) -> None:
         config = ExperimentConfig(
             context_dim=6,
             hidden_dim=12,
             temporal_edge_dim=9,
             candidate_new_roles=("planner", "coder"),
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         system = PredictDesignSystem(config=config)
         system.initialize_graph(
@@ -241,6 +262,7 @@ class PredictDesignTests(unittest.TestCase):
             hidden_dim=12,
             temporal_edge_dim=9,
             candidate_new_roles=("planner", "coder"),
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         system = PredictDesignSystem(config=config)
         system.initialize_graph(
@@ -287,6 +309,7 @@ class PredictDesignTests(unittest.TestCase):
             hidden_dim=12,
             gnn_type="llm_api",
             predictor_backend="llm_api",
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         predictor = LLMApiGraphActionPredictor(config=config, completion_fn=fake_completion)
         system = PredictDesignSystem(config=config, predictor=predictor)
@@ -319,6 +342,7 @@ class PredictDesignTests(unittest.TestCase):
             hidden_dim=12,
             gnn_type="llm_api",
             predictor_backend="llm_api",
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         predictor = LLMApiGraphActionPredictor(config=config, completion_fn=fake_completion)
         system = PredictDesignSystem(config=config, predictor=predictor)
@@ -375,6 +399,7 @@ class PredictDesignTests(unittest.TestCase):
             hidden_dim=12,
             train_epochs=0,
             llm_completion_fn=fake_completion,
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         episodes = [
             BenchmarkEpisode(
@@ -455,6 +480,7 @@ class PredictDesignTests(unittest.TestCase):
             train_epochs=0,
             hit_k_values=(1, 2),
             llm_completion_fn=fake_completion,
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         episodes = [
             BenchmarkEpisode(
@@ -519,7 +545,12 @@ class PredictDesignTests(unittest.TestCase):
         self.assertEqual(actions[0].relation_type, "banishment_vote")
 
     def test_evaluator_edge_match_checks_relation_type(self) -> None:
-        evaluator = BenchmarkEvaluator(context_dim=6, hidden_dim=12, train_epochs=0)
+        evaluator = BenchmarkEvaluator(
+            context_dim=6,
+            hidden_dim=12,
+            train_epochs=0,
+            sentence_transformer_path=MISSING_ST_MODEL,
+        )
         predicted = PredictedGraphAction(
             action_type=GraphActionType.CREATE_EDGE,
             score=1.0,
@@ -560,7 +591,8 @@ class PredictDesignTests(unittest.TestCase):
             context_dim=6,
             hidden_dim=12,
             candidate_new_roles=("planner", "coder"),
-            train_epochs=3,
+            train_epochs=0,
+            sentence_transformer_path=MISSING_ST_MODEL,
         )
         episodes = [
             BenchmarkEpisode(
@@ -606,8 +638,29 @@ class PredictDesignTests(unittest.TestCase):
             )
         ]
         results = evaluator.evaluate_dataset("toyset", episodes)
-        self.assertEqual(len(results), 12)
+        self.assertEqual(len(results), 6)
         self.assertTrue(all(item.total_steps == 1 for item in results))
+
+    def test_holdout_split_uses_fixed_80_20_partition(self) -> None:
+        trainer = BenchmarkTrainer(train_fraction=0.8, seed=11)
+        episodes = [
+            BenchmarkEpisode(
+                episode_id=f"episode_{index}",
+                dataset_name="toyset",
+                initial_nodes=[],
+                initial_edges=[],
+                steps=[],
+            )
+            for index in range(10)
+        ]
+        split = trainer.split_episodes(episodes)
+        self.assertEqual(len(split.train_episodes), 8)
+        self.assertEqual(len(split.eval_episodes), 2)
+        self.assertEqual(
+            {episode.episode_id for episode in split.train_episodes}
+            | {episode.episode_id for episode in split.eval_episodes},
+            {episode.episode_id for episode in episodes},
+        )
 
     def test_research_adapter_uses_next_step_as_supervision(self) -> None:
         adapter = MultiAgentBenchAdapter(context_dim=6, hidden_dim=12, device="cpu")
@@ -638,8 +691,255 @@ class PredictDesignTests(unittest.TestCase):
         self.assertEqual(
             [(action.source_node_id, action.target_node_id) for action in first_step.supervision_actions],
             [("agent2", "agent1")],
-        )
+            )
         self.assertEqual(len(episode.initial_structural_edges), 2)
+
+    def test_self_loop_retry_actions_remain_trainable(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            allow_self_loop_prediction=True,
+            candidate_relation_types=("activate", "retry"),
+            candidate_new_roles=("planner",),
+            sentence_transformer_path=MISSING_ST_MODEL,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[TemporalNode.build("agent1", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu")],
+        )
+        bundle = system.predictor.score_action_space(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+        )
+        self.assertTrue(bool(bundle.create_valid_mask[0, 0].item()))
+        trainer = BenchmarkTrainer()
+        retry_loss = trainer._edge_pair_set_loss(
+            bundle,
+            actions=[
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=1.0,
+                    effective_time=1.0,
+                    source_node_id="agent1",
+                    target_node_id="agent1",
+                    relation_type="retry",
+                )
+            ],
+            action_type=GraphActionType.CREATE_EDGE,
+            allow_self_loops=True,
+        )
+        self.assertIsNotNone(retry_loss)
+
+    def test_acg_nap_loader_cleans_noise_and_bootstraps_first_label(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            coding_dir = root / "coding"
+            research_dir = root / "research"
+            coding_dir.mkdir()
+            research_dir.mkdir()
+
+            coding_payloads = [
+                {
+                    "sample_id": "1",
+                    "workflow_id": "coding_demo",
+                    "scenario": "coding",
+                    "time": {"step": 1, "loc_time": "2026-05-01T00:00:00+08:00"},
+                    "graph": {
+                        "profile": "Build a demo system for coding collaboration.",
+                        "nodes": {
+                            "PLANNER": {
+                                "type": "agent",
+                                "profile": "Runtime planner / environment scheduler.",
+                                "context": "very long planner context",
+                                "latest_output": "",
+                            },
+                            "agent1": {
+                                "type": "agent",
+                                "profile": "I am a Coding Analyst.",
+                                "context": "very long analyst context",
+                                "latest_output": "{\"content\":\"analysis done\"}",
+                            },
+                            "agent2": {
+                                "type": "agent",
+                                "profile": "I am a Coding Implementation Agent.",
+                                "context": "very long coder context",
+                                "latest_output": "{\"content\":\"implementation draft\"}",
+                            },
+                        },
+                        "transitions": [
+                            {
+                                "id": "act_planner_agent1",
+                                "type": "activate",
+                                "tail": ["PLANNER"],
+                                "head": ["agent1"],
+                                "description": "planner activates analyst",
+                            },
+                            {
+                                "id": "retry_agent2",
+                                "type": "retry",
+                                "tail": ["agent2"],
+                                "head": ["agent2"],
+                                "description": "coder retries",
+                            },
+                        ],
+                    },
+                    "prediction": {
+                        "source": "agent1",
+                        "query": "very long query prompt that should be dropped",
+                        "transition_candidates": [
+                            {
+                                "transition_id": "act_agent1_agent2",
+                                "relation": "activate",
+                                "targets": ["agent2"],
+                                "description": "analyst activates coder",
+                            }
+                        ],
+                        "label": {"relation": "activate", "targets": ["agent2"]},
+                    },
+                },
+                {
+                    "sample_id": "2",
+                    "workflow_id": "coding_demo",
+                    "scenario": "coding",
+                    "time": {"step": 2, "loc_time": "2026-05-01T00:00:01+08:00"},
+                    "graph": {
+                        "profile": "Build a demo system for coding collaboration.",
+                        "nodes": {
+                            "PLANNER": {
+                                "type": "agent",
+                                "profile": "Runtime planner / environment scheduler.",
+                                "context": "very long planner context",
+                                "latest_output": "",
+                            },
+                            "agent1": {
+                                "type": "agent",
+                                "profile": "I am a Coding Analyst.",
+                                "context": "very long analyst context",
+                                "latest_output": "{\"content\":\"analysis done\"}",
+                            },
+                            "agent2": {
+                                "type": "agent",
+                                "profile": "I am a Coding Implementation Agent.",
+                                "context": "very long coder context",
+                                "latest_output": "{\"content\":\"implementation retry\"}",
+                            },
+                        },
+                        "transitions": [
+                            {
+                                "id": "retry_agent2",
+                                "type": "retry",
+                                "tail": ["agent2"],
+                                "head": ["agent2"],
+                                "description": "coder retries",
+                            }
+                        ],
+                    },
+                    "prediction": {
+                        "source": "agent2",
+                        "query": "another query prompt that should be dropped",
+                        "transition_candidates": [
+                            {
+                                "transition_id": "retry_agent2",
+                                "relation": "retry",
+                                "targets": ["agent2"],
+                                "description": "coder retries",
+                            }
+                        ],
+                        "label": {"relation": "retry", "targets": ["agent2"]},
+                    },
+                },
+            ]
+            research_payloads = [
+                {
+                    "sample_id": "1",
+                    "workflow_id": "research_demo",
+                    "scenario": "research",
+                    "time": {"step": 1, "loc_time": "2026-05-01T00:00:00+08:00"},
+                    "graph": {
+                        "profile": "Research collaboration bootstrap.",
+                        "nodes": {
+                            "PLANNER": {
+                                "type": "agent",
+                                "profile": "Runtime planner / environment scheduler.",
+                                "context": "very long planner context",
+                                "latest_output": "",
+                            },
+                            "agent1": {
+                                "type": "agent",
+                                "profile": "I am a researcher dedicated to privacy.",
+                                "context": "very long researcher context",
+                                "latest_output": "{\"content\":\"brainstormed idea\"}",
+                            },
+                            "agent2": {
+                                "type": "agent",
+                                "profile": "I am a researcher dedicated to optimization.",
+                                "context": "very long researcher context",
+                                "latest_output": "{\"content\":\"prepared summary\"}",
+                            },
+                        },
+                        "transitions": [
+                            {
+                                "id": "ret_agent2_agent1",
+                                "type": "delegate_return",
+                                "tail": ["agent2"],
+                                "head": ["agent1"],
+                                "description": "researcher returns delegated summary",
+                            }
+                        ],
+                    },
+                    "prediction": {
+                        "source": "agent2",
+                        "query": "research query that should be dropped",
+                        "transition_candidates": [
+                            {
+                                "transition_id": "ret_agent2_agent1",
+                                "relation": "delegate_return",
+                                "targets": ["agent1"],
+                                "description": "researcher returns delegated summary",
+                            }
+                        ],
+                        "label": {"relation": "delegate_return", "targets": ["agent1"]},
+                    },
+                }
+            ]
+
+            (coding_dir / "coding_demo.jsonl").write_text(
+                "\n".join(json.dumps(item, ensure_ascii=False) for item in coding_payloads),
+                encoding="utf-8",
+            )
+            (research_dir / "research_demo.jsonl").write_text(
+                "\n".join(json.dumps(item, ensure_ascii=False) for item in research_payloads),
+                encoding="utf-8",
+            )
+
+            adapter = ACGNapAdapter(context_dim=6, hidden_dim=12, device="cpu")
+            corpus = load_acg_nap_corpus(root, adapter)
+            coding_episode = corpus.datasets["coding"].episodes[0]
+            bootstrap_step = coding_episode.steps[0]
+            self.assertEqual(bootstrap_step.observed_actions[0].action_type, GraphActionType.NO_OP)
+            self.assertEqual(
+                bootstrap_step.supervision_actions[0].relation_type,
+                "activate",
+            )
+            self.assertEqual(
+                bootstrap_step.supervision_actions[0].target_node_id,
+                "agent2",
+            )
+            agent1_node = next(node for node in coding_episode.initial_nodes if node.node_id == "agent1")
+            self.assertLessEqual(len(agent1_node.context_text), 480)
+            self.assertIn("activate", corpus.relation_types)
+            self.assertIn("retry", corpus.relation_types)
+            self.assertIn("delegate_return", corpus.relation_types)
+            self.assertGreater(
+                corpus.cleaning_summary["removed_fields"]["prediction.query"],
+                0,
+            )
+            self.assertGreater(
+                corpus.cleaning_summary["removed_fields"]["graph.nodes.*.context"],
+                0,
+            )
 
     def test_future_rollout_targets_use_supervision_actions(self) -> None:
         trainer = BenchmarkTrainer()
@@ -691,7 +991,12 @@ class PredictDesignTests(unittest.TestCase):
         self.assertEqual(targets[0][1][0].action_type, GraphActionType.CREATE_EDGE)
 
     def test_evaluator_counts_any_valid_parallel_action_as_correct(self) -> None:
-        evaluator = BenchmarkEvaluator(context_dim=6, hidden_dim=12, train_epochs=0)
+        evaluator = BenchmarkEvaluator(
+            context_dim=6,
+            hidden_dim=12,
+            train_epochs=0,
+            sentence_transformer_path=MISSING_ST_MODEL,
+        )
         predicted = PredictedGraphAction(
             action_type=GraphActionType.CREATE_EDGE,
             score=1.0,

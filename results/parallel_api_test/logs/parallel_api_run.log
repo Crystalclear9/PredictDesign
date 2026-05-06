@@ -387,3 +387,240 @@
 [2026-04-27 19:39:26] {"scenario": "werewolf", "status": "failed", "error": "CalledProcessError(3221225786, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.environments.werewolf_env', '--rounds', '1', '--name', 'predictdesign_werewolf_44', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\werewolf\\\\werewolf_config.yaml'])"}
 [2026-04-27 19:39:26] partial summary written: C:\Users\70454\Desktop\PredictDesign\results\parallel_api_test\parallel_api_run_summary.json
 ===== 2026-04-27 19:39:26 PARALLEL RUN FAILED =====
+
+===== 2026-04-30 10:50:21 PARALLEL RUN START =====
+{
+  "results_dir": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test",
+  "python_bin": "C:\\Users\\70454\\Desktop\\PredictDesign\\.venv\\Scripts\\python.exe",
+  "resume": true,
+  "tee_subprocess_output": false,
+  "run_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\logs\\parallel_api_run.log",
+  "output_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\rich_log.jsonl",
+  "apis": {
+    "coding": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "research": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "werewolf": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    }
+  },
+  "outputs": {}
+}
+[2026-04-30 10:50:21] [submit] coding
+[2026-04-30 10:50:21] [submit] research
+[2026-04-30 10:50:21] [submit] werewolf
+[2026-04-30 10:50:21] {"scenario": "coding", "status": "completed", "output_count": 55, "outputs": ["C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_1_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_2_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_3_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_4_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_5_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_6_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_7_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_8_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_9_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_10_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_11_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_12_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_13_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_14_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_15_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_16_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_17_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_18_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_19_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_20_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_21_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_22_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_23_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_24_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_25_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_26_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_27_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_28_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_29_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_30_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_31_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_32_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_33_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_34_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_35_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_36_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_37_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_38_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_39_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_40_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_41_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_42_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_43_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_44_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_45_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_46_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_47_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_48_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_49_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_50_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_51_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_52_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_53_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_54_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_55_result.jsonl"]}
+[2026-04-30 10:54:33] {"scenario": "research", "status": "failed", "error": "CalledProcessError(1, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.main', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\research\\\\task_43.yaml'])"}
+
+===== 2026-04-30 11:02:47 PARALLEL RUN START =====
+{
+  "results_dir": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test",
+  "python_bin": "C:\\Users\\70454\\Desktop\\PredictDesign\\.venv\\Scripts\\python.exe",
+  "resume": true,
+  "tee_subprocess_output": false,
+  "run_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\logs\\parallel_api_run.log",
+  "output_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\rich_log.jsonl",
+  "apis": {
+    "coding": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "research": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "werewolf": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    }
+  },
+  "outputs": {}
+}
+[2026-04-30 11:02:47] [submit] coding
+[2026-04-30 11:02:47] [submit] research
+[2026-04-30 11:02:47] [submit] werewolf
+[2026-04-30 11:02:48] {"scenario": "coding", "status": "completed", "output_count": 55, "outputs": ["C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_1_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_2_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_3_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_4_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_5_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_6_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_7_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_8_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_9_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_10_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_11_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_12_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_13_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_14_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_15_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_16_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_17_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_18_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_19_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_20_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_21_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_22_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_23_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_24_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_25_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_26_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_27_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_28_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_29_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_30_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_31_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_32_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_33_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_34_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_35_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_36_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_37_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_38_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_39_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_40_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_41_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_42_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_43_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_44_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_45_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_46_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_47_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_48_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_49_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_50_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_51_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_52_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_53_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_54_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_55_result.jsonl"]}
+[2026-04-30 11:06:55] {"scenario": "research", "status": "failed", "error": "CalledProcessError(1, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.main', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\research\\\\task_44.yaml'])"}
+[2026-04-30 11:09:29] {"scenario": "werewolf", "status": "failed", "error": "CalledProcessError(3221225786, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.environments.werewolf_env', '--rounds', '1', '--name', 'predictdesign_werewolf_44', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\werewolf\\\\werewolf_config.yaml'])"}
+[2026-04-30 11:09:29] partial summary written: C:\Users\70454\Desktop\PredictDesign\results\parallel_api_test\parallel_api_run_summary.json
+===== 2026-04-30 11:09:29 PARALLEL RUN FAILED =====
+
+===== 2026-04-30 11:13:39 PARALLEL RUN START =====
+{
+  "results_dir": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test",
+  "python_bin": "C:\\Users\\70454\\Desktop\\PredictDesign\\.venv\\Scripts\\python.exe",
+  "resume": true,
+  "tee_subprocess_output": false,
+  "run_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\logs\\parallel_api_run.log",
+  "output_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\rich_log.jsonl",
+  "apis": {
+    "coding": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "research": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "werewolf": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    }
+  },
+  "outputs": {}
+}
+[2026-04-30 11:13:39] [submit] coding
+[2026-04-30 11:13:39] [submit] research
+[2026-04-30 11:13:39] [submit] werewolf
+[2026-04-30 11:13:39] {"scenario": "coding", "status": "completed", "output_count": 55, "outputs": ["C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_1_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_2_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_3_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_4_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_5_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_6_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_7_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_8_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_9_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_10_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_11_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_12_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_13_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_14_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_15_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_16_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_17_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_18_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_19_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_20_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_21_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_22_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_23_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_24_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_25_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_26_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_27_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_28_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_29_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_30_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_31_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_32_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_33_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_34_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_35_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_36_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_37_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_38_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_39_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_40_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_41_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_42_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_43_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_44_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_45_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_46_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_47_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_48_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_49_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_50_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_51_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_52_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_53_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_54_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_55_result.jsonl"]}
+[2026-04-30 11:14:48] {"scenario": "research", "status": "failed", "error": "CalledProcessError(3221225786, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.main', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\research\\\\task_45.yaml'])"}
+[2026-04-30 11:14:48] {"scenario": "werewolf", "status": "failed", "error": "CalledProcessError(3221225786, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.environments.werewolf_env', '--rounds', '1', '--name', 'predictdesign_werewolf_44', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\werewolf\\\\werewolf_config.yaml'])"}
+[2026-04-30 11:14:48] partial summary written: C:\Users\70454\Desktop\PredictDesign\results\parallel_api_test\parallel_api_run_summary.json
+===== 2026-04-30 11:14:48 PARALLEL RUN FAILED =====
+
+===== 2026-04-30 11:18:51 PARALLEL RUN START =====
+{
+  "results_dir": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test",
+  "python_bin": "C:\\Users\\70454\\Desktop\\PredictDesign\\.venv\\Scripts\\python.exe",
+  "resume": true,
+  "tee_subprocess_output": false,
+  "run_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\logs\\parallel_api_run.log",
+  "output_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\rich_log.jsonl",
+  "apis": {
+    "coding": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "research": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "werewolf": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    }
+  },
+  "outputs": {}
+}
+[2026-04-30 11:18:51] [submit] coding
+[2026-04-30 11:18:51] [submit] research
+[2026-04-30 11:18:51] [submit] werewolf
+[2026-04-30 11:18:51] {"scenario": "coding", "status": "completed", "output_count": 55, "outputs": ["C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_1_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_2_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_3_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_4_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_5_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_6_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_7_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_8_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_9_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_10_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_11_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_12_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_13_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_14_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_15_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_16_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_17_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_18_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_19_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_20_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_21_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_22_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_23_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_24_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_25_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_26_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_27_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_28_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_29_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_30_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_31_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_32_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_33_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_34_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_35_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_36_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_37_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_38_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_39_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_40_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_41_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_42_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_43_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_44_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_45_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_46_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_47_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_48_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_49_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_50_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_51_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_52_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_53_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_54_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_55_result.jsonl"]}
+[2026-04-30 11:19:21] {"scenario": "research", "status": "failed", "error": "CalledProcessError(3221225786, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.main', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\research\\\\task_45.yaml'])"}
+[2026-04-30 11:19:21] {"scenario": "werewolf", "status": "failed", "error": "CalledProcessError(3221225786, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.environments.werewolf_env', '--rounds', '1', '--name', 'predictdesign_werewolf_44', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\werewolf\\\\werewolf_config.yaml'])"}
+[2026-04-30 11:19:21] partial summary written: C:\Users\70454\Desktop\PredictDesign\results\parallel_api_test\parallel_api_run_summary.json
+===== 2026-04-30 11:19:21 PARALLEL RUN FAILED =====
+
+===== 2026-04-30 11:19:57 PARALLEL RUN START =====
+{
+  "results_dir": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test",
+  "python_bin": "C:\\Users\\70454\\Desktop\\PredictDesign\\.venv\\Scripts\\python.exe",
+  "resume": true,
+  "tee_subprocess_output": false,
+  "run_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\logs\\parallel_api_run.log",
+  "output_log": "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\rich_log.jsonl",
+  "apis": {
+    "coding": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "research": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    },
+    "werewolf": {
+      "api_key": "***",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "timeout": 600.0,
+      "max_retries": 5
+    }
+  },
+  "outputs": {}
+}
+[2026-04-30 11:19:57] [submit] coding
+[2026-04-30 11:19:57] [submit] research
+[2026-04-30 11:19:57] [submit] werewolf
+[2026-04-30 11:19:57] {"scenario": "coding", "status": "completed", "output_count": 55, "outputs": ["C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_1_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_2_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_3_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_4_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_5_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_6_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_7_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_8_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_9_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_10_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_11_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_12_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_13_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_14_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_15_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_16_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_17_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_18_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_19_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_20_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_21_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_22_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_23_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_24_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_25_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_26_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_27_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_28_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_29_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_30_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_31_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_32_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_33_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_34_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_35_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_36_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_37_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_38_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_39_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_40_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_41_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_42_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_43_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_44_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_45_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_46_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_47_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_48_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_49_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_50_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_51_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_52_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_53_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_54_result.jsonl", "C:\\Users\\70454\\Desktop\\PredictDesign\\results\\parallel_api_test\\coding_outputs\\task_55_result.jsonl"]}
+[2026-04-30 11:24:22] {"scenario": "research", "status": "failed", "error": "CalledProcessError(1, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.main', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\research\\\\task_43.yaml'])"}
+[2026-04-30 11:27:08] {"scenario": "werewolf", "status": "failed", "error": "CalledProcessError(3221225786, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.environments.werewolf_env', '--rounds', '1', '--name', 'predictdesign_werewolf_44', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\werewolf\\\\werewolf_config.yaml'])"}
+[2026-04-30 11:27:08] partial summary written: C:\Users\70454\Desktop\PredictDesign\results\parallel_api_test\parallel_api_run_summary.json
+===== 2026-04-30 11:27:08 PARALLEL RUN FAILED =====

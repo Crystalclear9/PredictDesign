@@ -36,10 +36,15 @@ class TemporalEdge:
     source_node_id: str
     target_node_id: str
     start_time: float
-    end_time: float
+
+    def __post_init__(self) -> None:
+        self.start_time = float(self.start_time)
 
     def is_active(self, time_value: float) -> bool:
-        return self.start_time <= time_value <= self.end_time
+        return self.start_time <= float(time_value)
+
+    def elapsed_time(self, time_value: float) -> float:
+        return max(float(time_value) - self.start_time, 0.0)
 
 
 class TemporalGraph:
@@ -108,13 +113,14 @@ class TemporalGraph:
         )
 
     def deactivate_edge(self, source_node_id: str, target_node_id: str, time_value: float) -> bool:
-        for edge in reversed(self.edges):
+        for index in range(len(self.edges) - 1, -1, -1):
+            edge = self.edges[index]
             if (
                 edge.source_node_id == source_node_id
                 and edge.target_node_id == target_node_id
                 and edge.is_active(time_value)
             ):
-                edge.end_time = min(edge.end_time, time_value)
+                self.edges.pop(index)
                 return True
         return False
 
@@ -142,6 +148,24 @@ class TemporalGraph:
                     adjacency[index[source_node_id], index[target_node_id]] = 1.0
         return adjacency
 
+    def structural_adjacency_matrix(
+        self,
+        node_order: list[str] | None = None,
+        device: torch.device | str | None = None,
+    ) -> torch.Tensor:
+        node_order = node_order or sorted(self.nodes)
+        device = torch.device(device or self.device)
+        index = {node_id: idx for idx, node_id in enumerate(node_order)}
+        adjacency = torch.zeros(
+            (len(node_order), len(node_order)),
+            dtype=torch.float32,
+            device=device,
+        )
+        for source_node_id, target_node_id in self.structural_edges:
+            if source_node_id in index and target_node_id in index:
+                adjacency[index[source_node_id], index[target_node_id]] = 1.0
+        return adjacency
+
     def temporal_edge_features(
         self,
         time_value: float,
@@ -162,20 +186,21 @@ class TemporalGraph:
                 continue
             row = index[edge.source_node_id]
             col = index[edge.target_node_id]
-            duration = max(edge.end_time - edge.start_time, 0.0)
-            elapsed = max(time_value - edge.start_time, 0.0)
-            remaining = max(edge.end_time - time_value, 0.0)
+            active_flag = 1.0 if edge.is_active(time_value) else 0.0
+            elapsed = edge.elapsed_time(time_value)
+            freshness = 1.0 / (1.0 + elapsed) if active_flag > 0.0 else 0.0
+            start_scale = torch.log1p(torch.tensor(abs(edge.start_time))).item()
             base_features = torch.tensor(
                 [
-                    1.0 if edge.is_active(time_value) else 0.0,
-                    torch.log1p(torch.tensor(duration)).item(),
+                    active_flag,
                     torch.log1p(torch.tensor(elapsed)).item(),
-                    torch.log1p(torch.tensor(remaining)).item(),
+                    freshness,
+                    start_scale,
                 ],
                 dtype=torch.float32,
                 device=device,
             )
-            feature_tensor[row, col, :4] = base_features
+            feature_tensor[row, col, : min(feature_dim, 4)] = base_features[: min(feature_dim, 4)]
         if feature_dim >= 5:
             for source_node_id, target_node_id in self.structural_edges:
                 if source_node_id not in index or target_node_id not in index:
@@ -204,7 +229,6 @@ class TemporalGraph:
                     source_node_id=edge.source_node_id,
                     target_node_id=edge.target_node_id,
                     start_time=edge.start_time,
-                    end_time=edge.end_time,
                 )
             )
         for source_node_id, target_node_id in self.structural_edges:

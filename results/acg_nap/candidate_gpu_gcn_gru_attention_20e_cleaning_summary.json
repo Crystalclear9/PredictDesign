@@ -1,0 +1,16 @@
+{
+  "root_path": "C:\\Users\\70454\\Desktop\\PredictDesign\\acg_nap",
+  "source_file_count": 108,
+  "raw_record_count": 3938,
+  "episode_count": 108,
+  "removed_fields": {
+    "graph.profile": 3938,
+    "prediction.query": 3938,
+    "graph.nodes.*.profile": 29651,
+    "graph.nodes.*.context": 25434
+  },
+  "retained_text_limits": {
+    "graph_profile_chars": 240,
+    "node_text_chars": 480
+  }
+}

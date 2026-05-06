@@ -96,7 +96,7 @@
     "werewolf": []
   },
   "errors": {
-    "research": "CalledProcessError(3221225786, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.main', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\research\\\\task_43.yaml'])",
+    "research": "CalledProcessError(1, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.main', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\research\\\\task_43.yaml'])",
     "werewolf": "CalledProcessError(3221225786, ['C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'core.environments.werewolf_env', '--rounds', '1', '--name', 'predictdesign_werewolf_44', '--config_path', 'C:\\\\Users\\\\70454\\\\Desktop\\\\PredictDesign\\\\results\\\\parallel_api_test\\\\runtime_configs\\\\werewolf\\\\werewolf_config.yaml'])"
   }
 }

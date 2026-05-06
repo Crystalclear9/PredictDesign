@@ -5,4 +5,14 @@ __pycache__/
 .venv/
 .tmp/
 .vscode/
-prefetch-kv-mas/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+Thumbs.db
+.DS_Store
+vendor/prefetch-kv-mas/
+data/acg_nap/
+
+# Local experiment clutter
+results/archive/

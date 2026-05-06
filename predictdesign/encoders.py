@@ -84,6 +84,9 @@ class SentenceTransformerEncoder(nn.Module):
     def _ensure_model(self) -> None:
         if self._st_model is not None:
             return
+        if self._model_path.startswith("__missing_") or self._model_path.startswith("__fallback_"):
+            self._use_fallback = True
+            return
         try:
             from sentence_transformers import SentenceTransformer
 
@@ -92,7 +95,11 @@ class SentenceTransformerEncoder(nn.Module):
                 for param in self._st_model.parameters():
                     param.requires_grad = False
             self._use_fallback = False
-        except (ImportError, OSError):
+        except Exception:
+            # Fall back to the local hash encoder whenever the external
+            # sentence-transformer stack is unavailable or cannot load the
+            # requested weights (for example due to offline execution or an
+            # intentionally invalid smoke-test model path).
             self._use_fallback = True
 
     def _fallback_encode(self, text: str, device: torch.device) -> torch.Tensor:

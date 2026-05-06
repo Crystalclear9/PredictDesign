@@ -31,10 +31,12 @@ class ExperimentConfig:
     latent_action_count: int = 4
     gnn_layers: int = 2
     prediction_horizon: int = 3
-    prediction_edge_duration: float = 1.0
     max_actions_per_step: int = 8
     temporal_edge_dim: int = 9
-    concurrent_update_mode: str = "sum"
+    allow_self_loop_prediction: bool = False
+    concurrent_update_mode: str = "attention"
+    aggregator_num_heads: int = 4
+    aggregator_dropout: float = 0.1
     state_updater_type: str = "gru"
     gnn_type: str = "gcn"
     predictor_backend: str = "gnn"
@@ -56,6 +58,14 @@ class ExperimentConfig:
     focal_loss_gamma: float = 2.0
     gradient_clip_norm: float = 1.0
     warmup_fraction: float = 0.2
+    training_node_feature_dropout: float = 0.15
+    training_edge_feature_dropout: float = 0.10
+    training_edge_mask_rate: float = 0.08
+    training_node_mask_rate: float = 0.05
+    training_message_dropout: float = 0.10
+    min_training_epochs: int = 5
+    early_stopping_patience: int = 8
+    shuffle_train_episodes: bool = True
     candidate_new_roles: tuple[str, ...] = field(
         default_factory=lambda: ("planner", "solver", "critic", "tool")
     )
@@ -89,14 +99,16 @@ class ExperimentConfig:
             raise ValueError("gnn_layers must be positive.")
         if self.prediction_horizon <= 0:
             raise ValueError("prediction_horizon must be positive.")
-        if self.prediction_edge_duration <= 0:
-            raise ValueError("prediction_edge_duration must be positive.")
         if self.max_actions_per_step <= 0:
             raise ValueError("max_actions_per_step must be positive.")
         if self.temporal_edge_dim < 9:
             raise ValueError("temporal_edge_dim must be at least 9.")
-        if self.concurrent_update_mode not in {"sum", "mean"}:
-            raise ValueError("concurrent_update_mode must be 'sum' or 'mean'.")
+        if self.concurrent_update_mode not in {"sum", "mean", "attention"}:
+            raise ValueError("concurrent_update_mode must be 'sum', 'mean', or 'attention'.")
+        if self.aggregator_num_heads <= 0:
+            raise ValueError("aggregator_num_heads must be positive.")
+        if self.aggregator_dropout < 0 or self.aggregator_dropout >= 1:
+            raise ValueError("aggregator_dropout must be in [0, 1).")
         if self.state_updater_type not in {"gru", "mdp"}:
             raise ValueError("state_updater_type must be 'gru' or 'mdp'.")
         if self.gnn_type not in {"gcn", "graphsage", "gat", "relational_transformer", "llm_api"}:
@@ -113,6 +125,20 @@ class ExperimentConfig:
             raise ValueError("rt_num_heads must be positive.")
         if self.rt_dropout < 0 or self.rt_dropout >= 1:
             raise ValueError("rt_dropout must be in [0, 1).")
+        if self.training_node_feature_dropout < 0 or self.training_node_feature_dropout >= 1:
+            raise ValueError("training_node_feature_dropout must be in [0, 1).")
+        if self.training_edge_feature_dropout < 0 or self.training_edge_feature_dropout >= 1:
+            raise ValueError("training_edge_feature_dropout must be in [0, 1).")
+        if self.training_edge_mask_rate < 0 or self.training_edge_mask_rate >= 1:
+            raise ValueError("training_edge_mask_rate must be in [0, 1).")
+        if self.training_node_mask_rate < 0 or self.training_node_mask_rate >= 1:
+            raise ValueError("training_node_mask_rate must be in [0, 1).")
+        if self.training_message_dropout < 0 or self.training_message_dropout >= 1:
+            raise ValueError("training_message_dropout must be in [0, 1).")
+        if self.min_training_epochs <= 0:
+            raise ValueError("min_training_epochs must be positive.")
+        if self.early_stopping_patience <= 0:
+            raise ValueError("early_stopping_patience must be positive.")
         if not self.llm_api.base_url:
             raise ValueError("llm_api.base_url must not be empty.")
         if not self.llm_api.model:

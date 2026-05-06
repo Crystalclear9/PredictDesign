@@ -173,7 +173,6 @@ class LLMApiGraphActionPredictor(nn.Module):
                     source_node_id=action.source_node_id,
                     target_node_id=action.target_node_id,
                     start_time=action.effective_time,
-                    end_time=action.effective_time + self.config.prediction_edge_duration,
                 )
             )
             if update_state:
@@ -280,7 +279,6 @@ class LLMApiGraphActionPredictor(nn.Module):
                     "source_node_id": edge.source_node_id,
                     "target_node_id": edge.target_node_id,
                     "start_time": edge.start_time,
-                    "end_time": edge.end_time,
                 }
                 for edge in temporal_graph.active_edges(observation_time)
             ],

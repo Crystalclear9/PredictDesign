@@ -7,20 +7,12 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ..messages import Message
+from ..paths import MARBLE_ROOT
 from ..prediction import GraphActionType, PredictedGraphAction
 from ..temporal_graph import TemporalNode
 from .types import BenchmarkEpisode, EpisodeStep
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CODING_METADATA_PATH = (
-    PROJECT_ROOT
-    / "prefetch-kv-mas"
-    / "benchmarks"
-    / "marble"
-    / "metadata"
-    / "coding"
-    / "coding_main.jsonl"
-)
+CODING_METADATA_PATH = MARBLE_ROOT / "metadata" / "coding" / "coding_main.jsonl"
 
 
 class MultiAgentBenchAdapter:

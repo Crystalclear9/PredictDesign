@@ -41,11 +41,16 @@ class ActionScoreBundle:
 
 
 class GraphActionPredictor(nn.Module):
+    supports_gradient_training = True
+
     def __init__(self, config: ExperimentConfig, node_feature_encoder: nn.Module) -> None:
         super().__init__()
         self.config = config
         self.device = torch.device(config.device)
         self.node_feature_encoder = node_feature_encoder
+        self.node_feature_dropout = nn.Dropout(config.training_node_feature_dropout)
+        self.edge_feature_dropout = nn.Dropout(config.training_edge_feature_dropout)
+        self.edge_mask_rate = config.training_edge_mask_rate
         self.gnn_backbone = GNNBackbone(
             layer_type=config.gnn_type,
             hidden_dim=config.hidden_dim,
@@ -167,11 +172,9 @@ class GraphActionPredictor(nn.Module):
             device=self.device,
             include_structural=False,
         )
-        message_passing_adjacency = temporal_graph.adjacency_matrix(
-            time_value=observation_time,
+        structural_adjacency = temporal_graph.structural_adjacency_matrix(
             node_order=node_order,
             device=self.device,
-            include_structural=True,
         )
         edge_features = temporal_graph.temporal_edge_features(
             time_value=observation_time,
@@ -185,12 +188,60 @@ class GraphActionPredictor(nn.Module):
             temporal_graph=temporal_graph,
             ctdg=ctdg,
         )
+        features = self._regularize_node_features(features)
+        active_adjacency, message_passing_adjacency, edge_features = self._regularize_graph_inputs(
+            active_adjacency=active_adjacency,
+            structural_adjacency=structural_adjacency,
+            edge_features=edge_features,
+        )
         # Build role indices for RT
         role_indices = self._build_role_indices(node_order, temporal_graph)
         encoded = self.gnn_backbone(
             features, message_passing_adjacency, edge_features, role_indices=role_indices,
         )
         return node_order, active_adjacency, edge_features, encoded
+
+    def _regularize_node_features(self, features: torch.Tensor) -> torch.Tensor:
+        if features.numel() == 0:
+            return features
+        regularized = self.node_feature_dropout(features)
+        if not self.training or self.config.training_node_mask_rate <= 0:
+            return regularized
+        keep_mask = (
+            torch.rand((features.size(0), 1), device=features.device) >= self.config.training_node_mask_rate
+        ).to(dtype=features.dtype)
+        keep_prob = max(1.0 - self.config.training_node_mask_rate, 1e-6)
+        return regularized * keep_mask / keep_prob
+
+    def _regularize_graph_inputs(
+        self,
+        active_adjacency: torch.Tensor,
+        structural_adjacency: torch.Tensor,
+        edge_features: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        message_passing_adjacency = torch.maximum(active_adjacency, structural_adjacency)
+        if not self.training:
+            return active_adjacency, message_passing_adjacency, edge_features
+        if self.edge_mask_rate > 0 and active_adjacency.numel() > 0:
+            active_mask = active_adjacency > 0
+            structural_mask = structural_adjacency > 0
+            droppable_mask = active_mask & ~structural_mask
+            if bool(droppable_mask.any().item()):
+                keep_mask = (
+                    torch.rand_like(active_adjacency) >= self.edge_mask_rate
+                ).to(dtype=active_adjacency.dtype)
+                protected_keep_mask = torch.where(
+                    droppable_mask,
+                    keep_mask,
+                    torch.ones_like(keep_mask),
+                )
+                message_passing_adjacency = torch.maximum(
+                    active_adjacency * protected_keep_mask,
+                    structural_adjacency,
+                )
+                edge_features = edge_features * protected_keep_mask.unsqueeze(-1)
+        edge_features = self.edge_feature_dropout(edge_features)
+        return active_adjacency, message_passing_adjacency, edge_features
 
     def graph_embedding_from_encoded(self, node_embeddings: torch.Tensor) -> torch.Tensor:
         if node_embeddings.numel() == 0:
@@ -425,7 +476,6 @@ class GraphActionPredictor(nn.Module):
                     source_node_id=action.source_node_id,
                     target_node_id=action.target_node_id,
                     start_time=action.effective_time,
-                    end_time=action.effective_time + self.config.prediction_edge_duration,
                 )
             )
             if update_state:
@@ -491,7 +541,7 @@ class GraphActionPredictor(nn.Module):
                 effective_time=effective_time,
             )
         invalid_mask = ~valid_mask.bool()
-        diagonal = torch.eye(adjacency.size(0), dtype=torch.bool, device=adjacency.device)
+        diagonal = self._diagonal_mask(adjacency.size(0), device=adjacency.device)
         masked_scores = scores.masked_fill(invalid_mask | diagonal, float("-inf"))
         best_flat_index = int(masked_scores.argmax().item())
         best_score = float(masked_scores.flatten()[best_flat_index].item())
@@ -577,7 +627,7 @@ class GraphActionPredictor(nn.Module):
     ) -> list[PredictedGraphAction]:
         if scores.numel() == 0:
             return []
-        diagonal = torch.eye(scores.size(0), dtype=torch.bool, device=scores.device)
+        diagonal = self._diagonal_mask(scores.size(0), device=scores.device)
         mask = valid_mask.bool() & ~diagonal
         if not bool(mask.any().item()):
             return []
@@ -625,11 +675,16 @@ class GraphActionPredictor(nn.Module):
     def _pooled_edge_logit(self, scores: torch.Tensor, valid_mask: torch.Tensor) -> torch.Tensor:
         if scores.numel() == 0:
             return valid_mask.new_tensor(-1e9, dtype=torch.float32)
-        diagonal = torch.eye(scores.size(0), dtype=torch.bool, device=scores.device)
+        diagonal = self._diagonal_mask(scores.size(0), device=scores.device)
         mask = valid_mask.bool() & ~diagonal
         if not bool(mask.any().item()):
             return scores.new_tensor(-1e9)
         return torch.logsumexp(scores.masked_select(mask), dim=0)
+
+    def _diagonal_mask(self, size: int, device: torch.device) -> torch.Tensor:
+        if self.config.allow_self_loop_prediction:
+            return torch.zeros((size, size), dtype=torch.bool, device=device)
+        return torch.eye(size, dtype=torch.bool, device=device)
 
     def _pair_feature_tensor(
         self,
@@ -725,36 +780,65 @@ class GraphActionPredictor(nn.Module):
             for col, target_id in enumerate(node_order):
                 target_role = temporal_graph.nodes[target_id].role.lower()
                 same_node = source_id == target_id
-                priors[row, col, relation_index["communication"]] = 0.4 if not same_node else -3.0
-                priors[row, col, relation_index["delegation"]] = (
-                    0.8
-                    if source_role in {"planner", "critic", "leader", "manager"}
-                    and not same_node
-                    else -1.5
-                )
-                priors[row, col, relation_index["banishment_vote"]] = 0.7 if not same_node else -3.0
-                priors[row, col, relation_index["werewolf_vote"]] = (
-                    1.4 if source_role in {"wolf", "werewolf"} and not same_node else -4.0
-                )
-                priors[row, col, relation_index["werewolf_attack"]] = (
-                    1.6
-                    if source_role in {"wolf", "werewolf"}
-                    and target_role not in {"wolf", "werewolf"}
-                    and not same_node
-                    else -4.0
-                )
-                priors[row, col, relation_index["guard_action"]] = (
-                    1.5 if source_role == "guard" and not same_node else -4.0
-                )
-                priors[row, col, relation_index["seer_check"]] = (
-                    1.5 if source_role == "seer" and not same_node else -4.0
-                )
-                priors[row, col, relation_index["witch_save"]] = (
-                    1.2 if source_role == "witch" and not same_node else -4.0
-                )
-                priors[row, col, relation_index["witch_poison"]] = (
-                    1.2 if source_role == "witch" and not same_node else -4.0
-                )
+                if "communication" in relation_index:
+                    priors[row, col, relation_index["communication"]] = (
+                        0.4 if not same_node else -3.0
+                    )
+                if "activate" in relation_index:
+                    priors[row, col, relation_index["activate"]] = (
+                        1.0 if not same_node else -2.0
+                    )
+                if "delegation" in relation_index:
+                    priors[row, col, relation_index["delegation"]] = (
+                        0.8
+                        if source_role in {"planner", "critic", "leader", "manager"} and not same_node
+                        else -1.5
+                    )
+                if "delegate" in relation_index:
+                    priors[row, col, relation_index["delegate"]] = (
+                        0.8
+                        if source_role in {"planner", "critic", "leader", "manager", "coding_analyst"}
+                        and not same_node
+                        else -1.5
+                    )
+                if "delegate_return" in relation_index:
+                    priors[row, col, relation_index["delegate_return"]] = (
+                        0.7 if not same_node else -2.0
+                    )
+                if "retry" in relation_index:
+                    priors[row, col, relation_index["retry"]] = 1.2 if same_node else -2.5
+                if "banishment_vote" in relation_index:
+                    priors[row, col, relation_index["banishment_vote"]] = (
+                        0.7 if not same_node else -3.0
+                    )
+                if "werewolf_vote" in relation_index:
+                    priors[row, col, relation_index["werewolf_vote"]] = (
+                        1.4 if source_role in {"wolf", "werewolf"} and not same_node else -4.0
+                    )
+                if "werewolf_attack" in relation_index:
+                    priors[row, col, relation_index["werewolf_attack"]] = (
+                        1.6
+                        if source_role in {"wolf", "werewolf"}
+                        and target_role not in {"wolf", "werewolf"}
+                        and not same_node
+                        else -4.0
+                    )
+                if "guard_action" in relation_index:
+                    priors[row, col, relation_index["guard_action"]] = (
+                        1.5 if source_role == "guard" and not same_node else -4.0
+                    )
+                if "seer_check" in relation_index:
+                    priors[row, col, relation_index["seer_check"]] = (
+                        1.5 if source_role == "seer" and not same_node else -4.0
+                    )
+                if "witch_save" in relation_index:
+                    priors[row, col, relation_index["witch_save"]] = (
+                        1.2 if source_role == "witch" and not same_node else -4.0
+                    )
+                if "witch_poison" in relation_index:
+                    priors[row, col, relation_index["witch_poison"]] = (
+                        1.2 if source_role == "witch" and not same_node else -4.0
+                    )
         return priors
 
     def _build_rollout_message(

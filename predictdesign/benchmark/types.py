@@ -14,6 +14,7 @@ class EpisodeStep:
     ground_truth_action: PredictedGraphAction
     observed_actions: list[PredictedGraphAction] = field(default_factory=list)
     valid_next_actions: list[PredictedGraphAction] = field(default_factory=list)
+    candidate_actions: list[PredictedGraphAction] = field(default_factory=list)
     context_updates: dict[str, list[float]] = field(default_factory=dict)
     context_text_updates: dict[str, str] = field(default_factory=dict)
 
