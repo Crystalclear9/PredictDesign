@@ -1,198 +1,200 @@
-# PredictDesign
+﻿# PredictDesign
 
-> **v0.2.0** — 多智能体协作时序图动作预测框架，现已集成 [Relational Transformer (RT, ICLR 2026)](https://openreview.net/forum?id=rpPtgMC5s9) 架构、SentenceTransformer 文本编码、冷启动初始化和节点完成检测。
+PredictDesign 是一个面向多智能体协作过程的时序图预测实验框架。仓库当前包含三类核心能力：
 
----
+- 图建模与预测：时序图、CTDG 状态更新、Relational Transformer、冷启动、节点完成检测。
+- 基准数据与日志：ACG-NAP 适配、MultiAgentBench / MARBLE 结果读取、rich log 导出。
+- 训练与评估：基于 rich log 的 MLP 训练、基于图结构的 GNN 训练、批量实验脚本。
 
-## 核心能力
+当前版本：`0.2.0`
 
-| 模块 | 描述 |
-|------|------|
-| **Temporal Graph** | 带起止时间的时序边 + 角色/上下文节点 |
-| **CTDG** | 每节点维护历史状态，支持并发消息聚合（sum/mean）|
-| **State Updater** | `GRU` / `MDP` 两种可切换的状态更新器 |
-| **Relational Transformer** ⭐ | 四种注意力掩码（role/neighbor/full/feature）+ GatedMLP + RMSNorm |
-| **SentenceTransformer 编码** ⭐ | 冻结 MiniLMv2 + 可训练投影层替代 hash 编码 |
-| **Cold Start** ⭐ | 空图时的角色原型 + 任务嵌入 + 初始边权先验 |
-| **Completion Detection** ⭐ | 每节点轻量二分类器，判断 agent 输出是否结束 |
-| **Focal Loss + Warmup** ⭐ | 训练时支持焦点损失、梯度裁剪、线性 warmup |
-| **LLM API Predictor** | 可用 LLM API 替换 GNN 做预测 |
+## 环境要求
 
-⭐ v0.2.0 新增
+- Python `>= 3.11`
+- 推荐使用虚拟环境
+- 主要 Python 依赖见 [pyproject.toml](C:/Users/70454/Desktop/PredictDesign/pyproject.toml)
 
----
+安装：
 
-## 目录结构
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .[dev]
+```
+
+最小验证：
+
+```bash
+python -c "import predictdesign; print('OK')"
+```
+
+## 当前目录结构
 
 ```text
 PredictDesign/
-├── predictdesign/
-│   ├── __init__.py               # 公开 API
-│   ├── config.py                 # ExperimentConfig（所有超参）
-│   ├── experiment.py             # PredictDesignSystem（顶层门面）
-│   ├── temporal_graph.py         # TemporalGraph / TemporalNode / TemporalEdge
-│   ├── ctdg.py                   # ContinuousTimeDynamicGraph
-│   ├── encoders.py               # SentenceTransformerEncoder / NodeFeatureEncoder
-│   ├── completion.py             # NodeCompletionClassifier ⭐
-│   ├── aggregation.py            # ConcurrentMessageAggregator
-│   ├── messages.py               # Message / MessageAction
-│   ├── prediction.py             # PredictedGraphAction / PredictionRollout
-│   ├── query_parser.py           # QueryParser（自然语言→初始图）
-│   ├── types.py
-│   ├── gnn/
-│   │   ├── layers.py             # RelationalAttentionLayer / GNNBackbone ⭐
-│   │   ├── cold_start.py         # ColdStartInitializer ⭐
-│   │   └── predictor.py          # GraphActionPredictor
-│   ├── state_update/             # GRUStateUpdater / MDPStateUpdater
-│   ├── benchmark/                # BenchmarkTrainer / BenchmarkEvaluator
-│   └── llm/                      # LLMApiGraphActionPredictor
-├── examples/
-│   ├── minimal_demo.py           # 基础 GNN 用法
-│   └── rt_demo.py                # RT + 冷启动 + 完成检测示例 ⭐
-├── scripts/                      # 评测脚本（MultiAgentBench）
-├── results/                      # 运行结果
-├── tests/
-│   └── test_predictdesign.py
-└── pyproject.toml
+|- predictdesign/            # 核心库代码
+|- scripts/                  # 运行、训练、运维脚本
+|  |- benchmark/             # benchmark 运行与 rich log 导出
+|  |- training/              # MLP / GNN 训练与评估
+|  `- ops/                   # 清理、监控、长任务启动
+|- examples/                 # 最小示例与 RT 示例
+|- tests/                    # 自动化测试
+|- data/                     # 本地数据目录
+|  `- acg_nap/
+|- vendor/                   # 第三方基准代码
+|  `- prefetch-kv-mas/
+|- results/                  # 实验输出、日志、归档结果
+|- docs/                     # 结构与维护说明
+|- README.md
+`- pyproject.toml
 ```
 
----
+目录约定：
 
-## 快速安装
+- `predictdesign/` 只放可复用库代码。
+- `scripts/benchmark/` 只放 benchmark 运行和日志导出脚本。
+- `scripts/training/` 只放训练与评估脚本。
+- `scripts/ops/` 只放清理、监控、shell 启动器。
+- `results/` 放运行结果，不把产物写回源码目录。
+- 路径常量统一定义在 [predictdesign/paths.py](C:/Users/70454/Desktop/PredictDesign/predictdesign/paths.py)。
+
+## 核心模块
+
+### 1. 图建模与预测
+
+位于 `predictdesign/`：
+
+- `temporal_graph.py`：时序节点、边和图容器
+- `ctdg.py`：连续时间动态图状态记录
+- `encoders.py`：SentenceTransformer 文本编码与节点特征编码
+- `completion.py`：节点完成检测
+- `experiment.py`：顶层 `PredictDesignSystem`
+- `gnn/`：Relational Transformer、冷启动与预测器
+- `state_update/`：GRU / MDP 状态更新
+- `llm/`：LLM API 预测器
+
+公开 API 入口在 [predictdesign/__init__.py](C:/Users/70454/Desktop/PredictDesign/predictdesign/__init__.py)。
+
+### 2. benchmark 与日志
+
+位于 `predictdesign/benchmark/`：
+
+- `acg_nap.py`：ACG-NAP 语料适配
+- `multiagentbench.py`：MultiAgentBench / MARBLE 结果适配
+- `rich_log.py`：rich log 写出、组合训练结果与图表输出
+- `trainer.py` / `evaluator.py`：训练与评估逻辑
+
+### 3. 脚本入口
+
+脚本已经按职责拆分：
+
+- [scripts/benchmark](C:/Users/70454/Desktop/PredictDesign/scripts/benchmark)
+- [scripts/training](C:/Users/70454/Desktop/PredictDesign/scripts/training)
+- [scripts/ops](C:/Users/70454/Desktop/PredictDesign/scripts/ops)
+
+同时保留了一层兼容包装，下面这些命令仍然可以直接使用：
 
 ```bash
-pip install -e .
-# 首次运行会自动下载 all-MiniLM-L6-v2（约 90MB）
+python scripts/run_parallel_api_rich_logs.py
+python scripts/run_marble_hitk_benchmark.py
+python scripts/train_rich_log_mlp.py
+python scripts/train_parallel_api_gnn.py
+python scripts/cleanup_workspace.py
+python scripts/monitor_full_runs.py
 ```
 
-依赖：`torch>=2.0`，`sentence-transformers>=2.2.0`
+脚本说明见 [scripts/README.md](C:/Users/70454/Desktop/PredictDesign/scripts/README.md)。
 
----
+## 快速开始
 
-## 快速上手
-
-### 最简配置（向下兼容）
-
-```python
-from predictdesign import ExperimentConfig, PredictDesignSystem
-
-system = PredictDesignSystem(config=ExperimentConfig(
-    gnn_type="graphsage",
-    candidate_new_roles=("planner", "coder", "reviewer"),
-))
-rollout = system.predict_next_steps(observation_time=1.0, steps=3)
-```
-
-### RT + 冷启动（推荐）
-
-```python
-from predictdesign import ExperimentConfig, PredictDesignSystem
-
-config = ExperimentConfig(
-    gnn_type="relational_transformer",   # RT backbone
-    rt_num_heads=4,
-    use_cold_start=True,                 # 空图冷启动
-    use_completion_detection=True,       # 节点完成检测
-    use_focal_loss=True,                 # 训练用焦点损失
-    gradient_clip_norm=1.0,
-    candidate_new_roles=("planner", "coder", "reviewer", "tool"),
-)
-system = PredictDesignSystem(config=config)
-
-# 冷启动：空图时仍可预测 ADD_NODE
-rollout = system.predict_next_steps(observation_time=0.0, steps=1)
-print(rollout.actions[0].action_type)  # GraphActionType.ADD_NODE
-```
-
-完整可运行示例见 [`examples/rt_demo.py`](examples/rt_demo.py)。
-
----
-
-## 模型架构（v0.2.0）
-
-```
-文本/上下文
-    ↓ SentenceTransformerEncoder（冻结 MiniLMv2 + 可训练 Linear）
-节点特征 ──────────────┐
-角色嵌入（hash）       │
-时间编码               │
-上下文维度             ↓
-              NodeFeatureEncoder → [N, D]
-                        ↓
-          RelationalAttentionLayer × L
-          ├── Role Attention     （同角色节点）
-          ├── Neighbor Attention  （有边相连的节点）
-          ├── Full Attention      （全节点）
-          └── Feature Attention   （cosine top-k neighbour）
-          + GatedMLP (SiLU) + RMSNorm (pre-norm)
-                        ↓
-            Attention Pooling → graph_embedding [D]
-            ├── add_node_head      → 角色分布
-            ├── action_count_head → 动作数量
-            └── no_op_head
-                        ↓
-      NodeCompletionClassifier → completion_scores [N] ∈ [0,1]
-      （影响 CREATE_EDGE 的 source 评分）
-```
-
-### 冷启动路径
-
-空图（无节点）时：
-1. `ColdStartInitializer.graph_embedding_cold()` 返回任务感知的图级嵌入，不再退化到零向量
-2. 预测头仍能正常预测 `ADD_NODE`
-3. ADD_NODE 执行后，新节点 CTDG 状态由角色原型初始化（非零）
-
----
-
-## 配置参数速查
-
-```python
-ExperimentConfig(
-    # --- 架构 ---
-    gnn_type = "relational_transformer",  # "gcn" | "graphsage" | "gat" | "relational_transformer"
-    rt_num_heads = 4,
-    rt_num_layers = 2,                    # 同 gnn_layers
-    rt_dropout = 0.1,
-
-    # --- SentenceTransformer ---
-    sentence_transformer_path = "all-MiniLM-L6-v2",  # 或本地路径
-    sentence_transformer_dim = 384,
-    sentence_transformer_freeze = True,
-
-    # --- 冷启动 ---
-    use_cold_start = True,
-
-    # --- 完成检测 ---
-    use_completion_detection = True,
-
-    # --- 训练 ---
-    use_focal_loss = True,
-    focal_loss_gamma = 2.0,
-    gradient_clip_norm = 1.0,
-    warmup_fraction = 0.1,
-
-    # --- 状态更新 ---
-    state_updater_type = "gru",   # "gru" | "mdp"
-    concurrent_update_mode = "mean",  # "sum" | "mean"
-)
-```
-
----
-
-## 运行测试
+### 1. 运行示例
 
 ```bash
-# 直接用 Python（规避 hydra/antlr 版本冲突）
-python -c "import predictdesign; print('OK')"
+python examples/minimal_demo.py
 python examples/rt_demo.py
+python examples/llm_api_predictor_example.py
+```
+
+### 2. 查看可用脚本参数
+
+```bash
+python scripts/run_parallel_api_rich_logs.py --help
+python scripts/train_rich_log_mlp.py --help
+python scripts/training/train_acg_nap_gnn.py --help
+```
+
+### 3. 清理工作区缓存
+
+预览：
+
+```bash
+python scripts/cleanup_workspace.py
+```
+
+执行清理：
+
+```bash
+python scripts/cleanup_workspace.py --execute
+```
+
+连同旧 smoke 结果一起归档：
+
+```bash
+python scripts/cleanup_workspace.py --execute --archive-smoke-results
+```
+
+## 结果与数据约定
+
+- 本地数据：`data/`
+- 第三方 benchmark 代码：`vendor/`
+- 运行结果：`results/`
+- 归档结果：`results/archive/`
+
+对于需要访问仓库内固定路径的代码，优先使用 `predictdesign.paths` 提供的常量，而不是在脚本里重复硬编码目录字符串。
+
+## 常见工作流
+
+### 导出并训练 rich log
+
+```bash
+python scripts/run_parallel_api_rich_logs.py --help
+python scripts/train_rich_log_mlp.py --help
+```
+
+### 训练图模型
+
+```bash
+python scripts/training/train_acg_nap_gnn.py --help
+python scripts/train_parallel_api_gnn.py --help
+```
+
+### 监控长任务
+
+```bash
+python scripts/monitor_full_runs.py --help
+```
+
+## 维护说明
+
+维护约束已经做过一轮收敛，后续建议继续遵守：
+
+- 新增训练脚本放到 `scripts/training/`
+- 新增 benchmark runner 放到 `scripts/benchmark/`
+- 新增清理或监控脚本放到 `scripts/ops/`
+- 不要把缓存、日志、模型产物写到 `predictdesign/`、`tests/` 或 `examples/`
+- 修改仓库路径时，同步更新 `predictdesign.paths`
+
+补充说明见 [docs/PROJECT_STRUCTURE.md](C:/Users/70454/Desktop/PredictDesign/docs/PROJECT_STRUCTURE.md)。
+
+## 测试
+
+```bash
+pytest
+```
+
+如果只做安装验证，至少执行：
+
+```bash
+python -c "import predictdesign; print('OK')"
 python examples/minimal_demo.py
 ```
-
----
-
-## 后续扩展建议
-
-- **接入自定义 ST 模型**：将 `sentence_transformer_path` 改为本地路径
-- **替换 GNN**：只需在 `gnn/layers.py` 里新增一个 `nn.Module` 并在 `GNNBackbone` 注册
-- **接入 LLM**：设置 `gnn_type="llm_api"` 并传入 `llm_completion_fn`
-- **做消融实验**：通过 `ExperimentConfig` 字段独立开关每个模块
