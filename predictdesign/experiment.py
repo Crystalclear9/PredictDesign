@@ -94,17 +94,26 @@ class PredictDesignSystem(nn.Module):
         nodes: list[TemporalNode] | None = None,
         edges: list[TemporalEdge] | None = None,
         structural_edges: list[tuple[str, str]] | None = None,
+        graph_context_text: str = "",
+        structural_edge_metadata: dict[tuple[str, str], list[dict[str, str]]] | None = None,
     ) -> None:
         self.temporal_graph = TemporalGraph(
             context_dim=self.config.context_dim,
             device=self.device,
         )
+        self.temporal_graph.graph_context_text = str(graph_context_text or "")
         for node in nodes or []:
             self.temporal_graph.add_node(node)
         for edge in edges or []:
             self.temporal_graph.add_edge(edge)
+        edge_metadata = structural_edge_metadata or {}
         for source_node_id, target_node_id in structural_edges or []:
             self.temporal_graph.add_structural_edge(source_node_id, target_node_id)
+            metadata_items = edge_metadata.get((source_node_id, target_node_id), [])
+            if metadata_items:
+                self.temporal_graph.structural_edge_metadata[
+                    (source_node_id, target_node_id)
+                ] = [dict(item) for item in metadata_items]
         self.ctdg = ContinuousTimeDynamicGraph(
             temporal_graph=self.temporal_graph,
             message_aggregator=self.message_aggregator,
@@ -112,6 +121,12 @@ class PredictDesignSystem(nn.Module):
             hidden_dim=self.config.hidden_dim,
             device=self.device,
         )
+        if hasattr(self.predictor, "initialize_ctdg_states"):
+            self.predictor.initialize_ctdg_states(
+                temporal_graph=self.temporal_graph,
+                ctdg=self.ctdg,
+                graph_context_text=self.temporal_graph.graph_context_text,
+            )
 
     def initialize_from_query(
         self,
@@ -128,6 +143,7 @@ class PredictDesignSystem(nn.Module):
             nodes=merged_nodes,
             edges=edges,
             structural_edges=structural_edges,
+            graph_context_text=query_text,
         )
         if inject_query_message and merged_nodes:
             self.ingest_messages(

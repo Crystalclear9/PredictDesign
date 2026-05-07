@@ -2,8 +2,8 @@
 
 PredictDesign 是一个面向多智能体协作过程的时序图预测实验框架。仓库当前包含三类核心能力：
 
-- 图建模与预测：时序图、CTDG 状态更新、Relational Transformer、冷启动、节点完成检测。
-- 基准数据与日志：ACG-NAP 适配、MultiAgentBench / MARBLE 结果读取、rich log 导出。
+- 图建模与预测：时序图、CTDG 状态更新、Relational Transformer、富元数据冷启动、候选动作重排、节点完成检测。
+- 基准数据与日志：ACG-NAP 多源适配、MultiAgentBench / MARBLE 结果读取、rich log 导出。
 - 训练与评估：基于 rich log 的 MLP 训练、基于图结构的 GNN 训练、批量实验脚本。
 
 当前版本：`0.2.0`
@@ -69,7 +69,8 @@ PredictDesign/
 - `encoders.py`：SentenceTransformer 文本编码与节点特征编码
 - `completion.py`：节点完成检测
 - `experiment.py`：顶层 `PredictDesignSystem`
-- `gnn/`：Relational Transformer、冷启动与预测器
+- `prediction.py`：图动作、rollout 与 `GraphPredictionContext`
+- `gnn/`：Relational Transformer、冷启动、候选动作重排与预测器
 - `state_update/`：GRU / MDP 状态更新
 - `llm/`：LLM API 预测器
 
@@ -84,7 +85,19 @@ PredictDesign/
 - `rich_log.py`：rich log 写出、组合训练结果与图表输出
 - `trainer.py` / `evaluator.py`：训练与评估逻辑
 
-### 3. 脚本入口
+### 3. 冷启动与多源条件化
+
+当前 GNN 冷启动不再只处理空图 fallback。ACG-NAP 适配器会加载并压缩这些来源：
+
+- `graph.profile`：任务说明、工作流协议与全局约束
+- `graph.nodes.*.profile` / `context` / `latest_output`：角色能力、当前状态和最近输出
+- `graph.transitions`：结构边、关系类型和 transition 描述
+- `prediction.source` / `prediction.query`：当前预测请求的源节点和 prompt
+- `prediction.transition_candidates`：候选 relation/target/description
+
+这些信息会进入 `GraphPredictionContext`，并通过 `GraphActionPredictor.score_action_space(..., prediction_context=...)` 参与打分。候选集存在时，预测器优先对候选动作排序；没有候选集时，仍然回退到完整图动作空间。通用 trainer/evaluator 和 ACG-NAP candidate trainer 都会沿 rollout 传递 step 级上下文；LLM API backend 也会把同一份上下文写入预测 prompt。初始化已有节点时，`PredictDesignSystem.initialize_graph(...)` 会把图级文本、节点文本和结构边描述用于 CTDG 初始状态，避免已有节点从纯零状态开始。
+
+### 4. 脚本入口
 
 脚本已经按职责拆分：
 
@@ -167,6 +180,14 @@ python scripts/train_rich_log_mlp.py --help
 python scripts/training/train_acg_nap_gnn.py --help
 python scripts/train_parallel_api_gnn.py --help
 ```
+
+### ACG-NAP 候选动作重排
+
+```bash
+python scripts/training/train_acg_nap_candidate_gnn.py --help
+```
+
+该脚本使用 `transition_candidates` 做当前步候选重排训练。它会把 source/query/profile/latest output/candidate description 一起传入预测器，但不会自动运行大规模实验。
 
 ### 监控长任务
 

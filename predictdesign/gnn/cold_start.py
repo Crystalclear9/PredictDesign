@@ -87,6 +87,18 @@ class ColdStartInitializer(nn.Module):
             return fused
         return prototype
 
+    def initialize_state_from_text(
+        self,
+        role: str,
+        text: str,
+        device: torch.device | str = "cpu",
+    ) -> torch.Tensor:
+        """Generate an initial state from role plus task/node text."""
+        task_embedding = None
+        if text.strip() and self.text_encoder is not None:
+            task_embedding = self.text_encoder(text, device=device)
+        return self.initialize_state(role, device=device, task_embedding=task_embedding)
+
     def initialize_states(
         self,
         roles: list[str],

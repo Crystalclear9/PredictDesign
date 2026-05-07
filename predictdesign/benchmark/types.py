@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..messages import Message
-from ..prediction import PredictedGraphAction
+from ..prediction import GraphPredictionContext, PredictedGraphAction
 from ..temporal_graph import TemporalEdge, TemporalNode
 
 
@@ -17,6 +17,7 @@ class EpisodeStep:
     candidate_actions: list[PredictedGraphAction] = field(default_factory=list)
     context_updates: dict[str, list[float]] = field(default_factory=dict)
     context_text_updates: dict[str, str] = field(default_factory=dict)
+    prediction_context: GraphPredictionContext | None = None
 
     @property
     def supervision_actions(self) -> list[PredictedGraphAction]:
@@ -31,3 +32,7 @@ class BenchmarkEpisode:
     initial_edges: list[TemporalEdge]
     steps: list[EpisodeStep]
     initial_structural_edges: list[tuple[str, str]] = field(default_factory=list)
+    initial_graph_context_text: str = ""
+    initial_structural_edge_metadata: dict[tuple[str, str], list[dict[str, str]]] = field(
+        default_factory=dict
+    )

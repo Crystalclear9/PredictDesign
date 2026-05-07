@@ -15,6 +15,7 @@ from ..ctdg import ContinuousTimeDynamicGraph
 from ..messages import Message
 from ..prediction import (
     GraphActionType,
+    GraphPredictionContext,
     PredictedGraphAction,
     PredictionRollout,
     PredictionSubgraphRollout,
@@ -44,20 +45,28 @@ class LLMApiGraphActionPredictor(nn.Module):
         temporal_graph: TemporalGraph,
         ctdg: ContinuousTimeDynamicGraph,
         observation_time: float,
+        prediction_context: GraphPredictionContext | None = None,
     ) -> PredictedGraphAction:
-        return self.predict_action_set(temporal_graph, ctdg, observation_time)[0]
+        return self.predict_action_set(
+            temporal_graph,
+            ctdg,
+            observation_time,
+            prediction_context=prediction_context,
+        )[0]
 
     def predict_action_set(
         self,
         temporal_graph: TemporalGraph,
         ctdg: ContinuousTimeDynamicGraph,
         observation_time: float,
+        prediction_context: GraphPredictionContext | None = None,
     ) -> list[PredictedGraphAction]:
         prompt = self._build_user_prompt(
             temporal_graph=temporal_graph,
             ctdg=ctdg,
             observation_time=observation_time,
             horizon=1,
+            prediction_context=prediction_context,
         )
         raw_response = self._complete(prompt)
         actions = self._parse_actions(
@@ -74,6 +83,7 @@ class LLMApiGraphActionPredictor(nn.Module):
         observation_time: float,
         steps: int | None = None,
         time_schedule: list[float] | None = None,
+        prediction_context_schedule: list[GraphPredictionContext | None] | None = None,
     ) -> PredictionRollout:
         if time_schedule is not None:
             steps = len(time_schedule)
@@ -92,6 +102,11 @@ class LLMApiGraphActionPredictor(nn.Module):
                 temporal_graph=rollout_graph,
                 ctdg=rollout_ctdg,
                 observation_time=step_time,
+                prediction_context=(
+                    prediction_context_schedule[offset]
+                    if prediction_context_schedule and offset < len(prediction_context_schedule)
+                    else None
+                ),
             )
             actions.append(action)
             self.apply_action(
@@ -109,6 +124,7 @@ class LLMApiGraphActionPredictor(nn.Module):
         observation_time: float,
         steps: int | None = None,
         time_schedule: list[float] | None = None,
+        prediction_context_schedule: list[GraphPredictionContext | None] | None = None,
     ) -> PredictionSubgraphRollout:
         if time_schedule is not None:
             steps = len(time_schedule)
@@ -128,6 +144,11 @@ class LLMApiGraphActionPredictor(nn.Module):
                 ctdg=rollout_ctdg,
                 observation_time=step_time,
                 horizon=max(1, steps - offset),
+                prediction_context=(
+                    prediction_context_schedule[offset]
+                    if prediction_context_schedule and offset < len(prediction_context_schedule)
+                    else None
+                ),
             )
             raw_response = self._complete(prompt)
             action_set = self._parse_actions(
@@ -253,12 +274,15 @@ class LLMApiGraphActionPredictor(nn.Module):
         ctdg: ContinuousTimeDynamicGraph,
         observation_time: float,
         horizon: int,
+        prediction_context: GraphPredictionContext | None = None,
     ) -> str:
         payload = {
             "observation_time": observation_time,
             "prediction_horizon": horizon,
             "candidate_new_roles": list(self.config.candidate_new_roles),
             "candidate_relation_types": list(self.config.candidate_relation_types),
+            "graph_context_text": str(temporal_graph.graph_context_text or ""),
+            "prediction_context": self._prediction_context_payload(prediction_context),
             "graph_summary": {
                 "node_count": len(temporal_graph.nodes),
                 "active_edge_count": len(temporal_graph.active_edges(observation_time)),
@@ -283,7 +307,17 @@ class LLMApiGraphActionPredictor(nn.Module):
                 for edge in temporal_graph.active_edges(observation_time)
             ],
             "structural_edges": [
-                {"source_node_id": source_node_id, "target_node_id": target_node_id}
+                {
+                    "source_node_id": source_node_id,
+                    "target_node_id": target_node_id,
+                    "metadata": [
+                        {str(key): str(value) for key, value in item.items()}
+                        for item in temporal_graph.structural_edge_metadata.get(
+                            (source_node_id, target_node_id),
+                            [],
+                        )
+                    ],
+                }
                 for source_node_id, target_node_id in sorted(temporal_graph.structural_edges)
             ],
             "recent_messages": [
@@ -316,6 +350,7 @@ class LLMApiGraphActionPredictor(nn.Module):
             "Predict the next collaboration graph changes.\n"
             "Return JSON only. Do not include explanations.\n"
             "Use the current graph structure and each agent's current output text directly.\n"
+            "When prediction_context or candidate actions are provided, use them as first-class evidence for the requested step.\n"
             "No prompt-side truncation has been applied to node outputs or message texts.\n"
             "You may also use each agent's current output summary and current state summary as auxiliary signals.\n"
             "You must directly predict from the supplied collaboration graph, node roles, current node outputs, node states, and recent interaction contents.\n"
@@ -324,6 +359,36 @@ class LLMApiGraphActionPredictor(nn.Module):
             "Prefer a small, high-confidence action set instead of many low-confidence actions.\n"
             f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
         )
+
+    def _prediction_context_payload(
+        self,
+        prediction_context: GraphPredictionContext | None,
+    ) -> dict | None:
+        if prediction_context is None:
+            return None
+        return {
+            "source_node_id": prediction_context.source_node_id,
+            "query_text": prediction_context.query_text,
+            "graph_profile_text": prediction_context.graph_profile_text,
+            "source_output_text": prediction_context.source_output_text,
+            "candidate_actions": [
+                {
+                    "action_type": action.action_type.value,
+                    "source_node_id": action.source_node_id,
+                    "target_node_id": action.target_node_id,
+                    "relation_type": action.relation_type,
+                    "role": action.role,
+                    "new_node_id": action.new_node_id,
+                    "metadata": {
+                        str(key): str(value) for key, value in action.metadata.items()
+                    },
+                }
+                for action in prediction_context.candidate_actions
+            ],
+            "metadata": {
+                str(key): str(value) for key, value in prediction_context.metadata.items()
+            },
+        }
 
     def _parse_actions(
         self,

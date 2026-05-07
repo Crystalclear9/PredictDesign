@@ -218,6 +218,7 @@ def iter_rich_log_records(
                 "target_action_type": target_actions[0].action_type.value if target_actions else "no_op",
                 "target_action_signature": _action_signature(target_actions[0]) if target_actions else "no_op",
                 "target_action_count": len(target_actions),
+                "prediction_context": _prediction_context_to_dict(step),
             }
             yield record
             sample_index += 1
@@ -507,7 +508,22 @@ def _action_to_dict(action: PredictedGraphAction) -> dict[str, Any]:
         "relation_type": action.relation_type,
         "role": action.role,
         "new_node_id": action.new_node_id,
+        "metadata": dict(action.metadata),
         "signature": _action_signature(action),
+    }
+
+
+def _prediction_context_to_dict(step: EpisodeStep) -> dict[str, Any]:
+    context = step.prediction_context
+    if context is None:
+        return {}
+    return {
+        "source_node_id": context.source_node_id,
+        "query_text": context.query_text,
+        "graph_profile_text": context.graph_profile_text,
+        "source_output_text": context.source_output_text,
+        "candidate_actions": [_action_to_dict(action) for action in context.candidate_actions],
+        "metadata": dict(context.metadata),
     }
 
 

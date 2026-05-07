@@ -54,6 +54,8 @@ class TemporalGraph:
         self.nodes: dict[str, TemporalNode] = {}
         self.edges: list[TemporalEdge] = []
         self.structural_edges: set[tuple[str, str]] = set()
+        self.structural_edge_metadata: dict[tuple[str, str], list[dict[str, str]]] = {}
+        self.graph_context_text: str = ""
 
     def add_node(self, node: TemporalNode) -> None:
         self.nodes[node.node_id] = TemporalNode(
@@ -79,12 +81,27 @@ class TemporalGraph:
             raise KeyError("Both edge endpoints must exist in the temporal graph.")
         self.edges.append(edge)
 
-    def add_structural_edge(self, source_node_id: str, target_node_id: str) -> None:
+    def add_structural_edge(
+        self,
+        source_node_id: str,
+        target_node_id: str,
+        relation_type: str | None = None,
+        description: str | None = None,
+    ) -> None:
         if source_node_id not in self.nodes or target_node_id not in self.nodes:
             raise KeyError("Both structural edge endpoints must exist in the temporal graph.")
         if source_node_id == target_node_id:
             return
-        self.structural_edges.add((source_node_id, target_node_id))
+        key = (source_node_id, target_node_id)
+        self.structural_edges.add(key)
+        if relation_type or description:
+            item = {
+                "relation_type": str(relation_type or ""),
+                "description": str(description or ""),
+            }
+            bucket = self.structural_edge_metadata.setdefault(key, [])
+            if item not in bucket:
+                bucket.append(item)
 
     def has_structural_edge(self, source_node_id: str, target_node_id: str) -> bool:
         return (source_node_id, target_node_id) in self.structural_edges
@@ -221,6 +238,7 @@ class TemporalGraph:
 
     def clone(self) -> "TemporalGraph":
         cloned = TemporalGraph(context_dim=self.context_dim, device=self.device)
+        cloned.graph_context_text = self.graph_context_text
         for node in self.nodes.values():
             cloned.add_node(node)
         for edge in self.edges:
@@ -233,4 +251,8 @@ class TemporalGraph:
             )
         for source_node_id, target_node_id in self.structural_edges:
             cloned.add_structural_edge(source_node_id, target_node_id)
+        cloned.structural_edge_metadata = {
+            key: [dict(item) for item in value]
+            for key, value in self.structural_edge_metadata.items()
+        }
         return cloned

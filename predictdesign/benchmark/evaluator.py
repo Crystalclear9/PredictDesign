@@ -377,6 +377,8 @@ class BenchmarkEvaluator:
                 nodes=episode.initial_nodes,
                 edges=episode.initial_edges,
                 structural_edges=episode.initial_structural_edges,
+                graph_context_text=episode.initial_graph_context_text,
+                structural_edge_metadata=episode.initial_structural_edge_metadata,
             )
             for step_index, step in enumerate(episode.steps):
                 self.trainer._apply_context_updates(system, step)
@@ -393,15 +395,19 @@ class BenchmarkEvaluator:
                     step_index=step_index,
                     horizon=system.config.prediction_horizon,
                 )[:available_future_steps]
-                future_times = [time_value for time_value, _ in future_targets]
+                future_times = [time_value for time_value, _, _ in future_targets]
+                prediction_context_schedule = [
+                    prediction_context for _, _, prediction_context in future_targets
+                ]
                 rollout = system.predictor.predict_subgraph_rollout(
                     temporal_graph=system.temporal_graph,
                     ctdg=system.ctdg,
                     observation_time=step.observation_time,
                     time_schedule=future_times,
+                    prediction_context_schedule=prediction_context_schedule,
                 )
                 predicted_action_windows = rollout.actions_by_step
-                future_action_windows = [actions for _, actions in future_targets]
+                future_action_windows = [actions for _, actions, _ in future_targets]
                 future_union = self._flatten_action_windows(future_action_windows)
                 first_predicted_window = predicted_action_windows[0] if predicted_action_windows else []
                 predicted_union = self._flatten_action_windows(predicted_action_windows)
@@ -461,7 +467,7 @@ class BenchmarkEvaluator:
         episode: BenchmarkEpisode,
         step_index: int,
         horizon: int,
-    ) -> list[tuple[float, list[PredictedGraphAction]]]:
+    ):
         return self.trainer._future_rollout_targets(episode, step_index, horizon)
 
     def _episode_folds(

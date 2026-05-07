@@ -176,6 +176,7 @@ class MultiAgentBenchAdapter:
             initial_nodes=initial_nodes,
             initial_edges=[],
             initial_structural_edges=initial_structural_edges,
+            initial_graph_context_text=task_text,
             steps=steps,
         )
 
@@ -276,6 +277,7 @@ class MultiAgentBenchAdapter:
             initial_nodes=initial_nodes,
             initial_edges=[],
             initial_structural_edges=initial_structural_edges,
+            initial_graph_context_text=task_text,
             steps=steps,
         )
 
@@ -417,6 +419,7 @@ class MultiAgentBenchAdapter:
             initial_nodes=initial_nodes,
             initial_edges=[],
             initial_structural_edges=[],
+            initial_graph_context_text="Werewolf game initialized.",
             steps=steps,
         )
 
@@ -739,6 +742,7 @@ class MultiAgentBenchAdapter:
             relation_type=action.relation_type,
             role=action.role,
             new_node_id=action.new_node_id,
+            metadata=dict(action.metadata),
         )
 
     def _infer_relation_type(self, message: Message) -> str:

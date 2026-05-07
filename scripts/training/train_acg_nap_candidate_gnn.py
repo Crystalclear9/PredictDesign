@@ -83,6 +83,8 @@ class ACGNapCandidateTrainer:
             nodes=episode.initial_nodes,
             edges=episode.initial_edges,
             structural_edges=episode.initial_structural_edges,
+            graph_context_text=episode.initial_graph_context_text,
+            structural_edge_metadata=episode.initial_structural_edge_metadata,
         )
         optimizer.zero_grad(set_to_none=True)
         episode_loss = next(system.parameters()).new_tensor(0.0)
@@ -115,6 +117,8 @@ class ACGNapCandidateTrainer:
                 nodes=episode.initial_nodes,
                 edges=episode.initial_edges,
                 structural_edges=episode.initial_structural_edges,
+                graph_context_text=episode.initial_graph_context_text,
+                structural_edge_metadata=episode.initial_structural_edge_metadata,
             )
             for step in episode.steps:
                 self._apply_context_updates(system, step)
@@ -159,9 +163,18 @@ class ACGNapCandidateTrainer:
             temporal_graph=system.temporal_graph,
             ctdg=system.ctdg,
             observation_time=step.observation_time,
+            prediction_context=step.prediction_context,
         )
         if not bundle.node_order:
             return None, [], []
+        if bundle.candidate_actions and bundle.candidate_scores is not None:
+            filtered_actions = list(bundle.candidate_actions)
+            target_indices = [
+                idx
+                for idx, action in enumerate(filtered_actions)
+                if self._action_matches_any(action, step.observed_actions or [step.ground_truth_action])
+            ]
+            return bundle.candidate_scores, target_indices, filtered_actions
         relation_index = {
             relation_type: index
             for index, relation_type in enumerate(system.config.candidate_relation_types)

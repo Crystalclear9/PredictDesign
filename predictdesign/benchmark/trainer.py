@@ -10,8 +10,10 @@ import torch.nn.functional as F
 from ..config import ExperimentConfig
 from ..experiment import PredictDesignSystem
 from ..messages import Message, MessageAction
-from ..prediction import GraphActionType, PredictedGraphAction
+from ..prediction import GraphActionType, GraphPredictionContext, PredictedGraphAction
 from .types import BenchmarkEpisode, EpisodeStep
+
+RolloutTarget = tuple[float, list[PredictedGraphAction], GraphPredictionContext | None]
 
 
 def _focal_loss(
@@ -162,6 +164,8 @@ class BenchmarkTrainer:
             nodes=episode.initial_nodes,
             edges=episode.initial_edges,
             structural_edges=episode.initial_structural_edges,
+            graph_context_text=episode.initial_graph_context_text,
+            structural_edge_metadata=episode.initial_structural_edge_metadata,
         )
         optimizer.zero_grad(set_to_none=True)
         episode_loss = next(system.parameters()).new_tensor(0.0)
@@ -195,7 +199,7 @@ class BenchmarkTrainer:
     def _rollout_loss(
         self,
         system: PredictDesignSystem,
-        rollout_targets: list[tuple[float, list[PredictedGraphAction]]],
+        rollout_targets: list[RolloutTarget],
         config: ExperimentConfig | None = None,
     ) -> torch.Tensor:
         if not rollout_targets:
@@ -205,7 +209,7 @@ class BenchmarkTrainer:
         rollout_ctdg = system.ctdg.clone_with_graph(rollout_graph)
         total_loss = next(system.parameters()).new_tensor(0.0)
         total_weight = 0.0
-        for step_offset, (observation_time, actions) in enumerate(rollout_targets):
+        for step_offset, (observation_time, actions, prediction_context) in enumerate(rollout_targets):
             step_weight = self.first_step_loss_weight if step_offset == 0 else 1.0
             total_loss = total_loss + step_weight * self._single_time_loss(
                 system=system,
@@ -213,6 +217,7 @@ class BenchmarkTrainer:
                 ctdg=rollout_ctdg,
                 actions=actions,
                 observation_time=observation_time,
+                prediction_context=prediction_context,
                 config=cfg,
             )
             total_weight += step_weight
@@ -232,6 +237,7 @@ class BenchmarkTrainer:
         ctdg,
         actions: list[PredictedGraphAction],
         observation_time: float,
+        prediction_context: GraphPredictionContext | None = None,
         config: ExperimentConfig | None = None,
     ) -> torch.Tensor:
         cfg = config or system.config
@@ -239,6 +245,7 @@ class BenchmarkTrainer:
             temporal_graph=temporal_graph,
             ctdg=ctdg,
             observation_time=observation_time,
+            prediction_context=prediction_context,
         )
         action_logits = system.predictor.action_type_logits(bundle)
         action_targets = {
@@ -292,14 +299,20 @@ class BenchmarkTrainer:
         episode: BenchmarkEpisode,
         step_index: int,
         horizon: int,
-    ) -> list[tuple[float, list[PredictedGraphAction]]]:
-        targets: list[tuple[float, list[PredictedGraphAction]]] = []
+    ) -> list[RolloutTarget]:
+        targets: list[RolloutTarget] = []
         current_time = episode.steps[step_index].observation_time
         for offset in range(1, horizon + 1):
             future_index = step_index + offset
             if future_index < len(episode.steps):
                 future_step = episode.steps[future_index]
-                targets.append((future_step.observation_time, future_step.supervision_actions))
+                targets.append(
+                    (
+                        future_step.observation_time,
+                        future_step.supervision_actions,
+                        future_step.prediction_context,
+                    )
+                )
             else:
                 targets.append(
                     (
@@ -311,6 +324,7 @@ class BenchmarkTrainer:
                                 effective_time=current_time + float(offset),
                             )
                         ],
+                        None,
                     )
                 )
         return targets
@@ -472,6 +486,8 @@ class BenchmarkTrainer:
                 nodes=episode.initial_nodes,
                 edges=episode.initial_edges,
                 structural_edges=episode.initial_structural_edges,
+                graph_context_text=episode.initial_graph_context_text,
+                structural_edge_metadata=episode.initial_structural_edge_metadata,
             )
             for step_index, step in enumerate(episode.steps):
                 self._apply_context_updates(system, step)
@@ -480,11 +496,12 @@ class BenchmarkTrainer:
                 rollout_targets = self._future_rollout_targets(episode, step_index=step_index, horizon=1)
                 if not rollout_targets:
                     continue
-                observation_time, expected_actions = rollout_targets[0]
+                observation_time, expected_actions, prediction_context = rollout_targets[0]
                 predicted_actions = system.predictor.predict_action_set(
                     temporal_graph=system.temporal_graph,
                     ctdg=system.ctdg,
                     observation_time=observation_time,
+                    prediction_context=prediction_context,
                 )
                 if self._actions_match_any(predicted_actions[:1], expected_actions):
                     correct += 1

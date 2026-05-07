@@ -13,6 +13,7 @@ from predictdesign import (
     BenchmarkEpisode,
     EpisodeStep,
     ExperimentConfig,
+    GraphPredictionContext,
     GraphActionType,
     LLMApiGraphActionPredictor,
     PredictDesignSystem,
@@ -732,6 +733,49 @@ class PredictDesignTests(unittest.TestCase):
         )
         self.assertIsNotNone(retry_loss)
 
+    def test_prediction_context_ranks_supplied_candidate_actions(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("activate", "delegate"),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("planner", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("worker", "worker", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ],
+            graph_context_text="planner should activate worker",
+        )
+        candidate = PredictedGraphAction(
+            action_type=GraphActionType.CREATE_EDGE,
+            score=0.0,
+            effective_time=1.0,
+            source_node_id="planner",
+            target_node_id="worker",
+            relation_type="activate",
+            metadata={"description": "planner activates worker"},
+        )
+        context = GraphPredictionContext(
+            source_node_id="planner",
+            query_text="activate worker next",
+            graph_profile_text="two-agent workflow",
+            candidate_actions=[candidate],
+        )
+        predicted = system.predictor.predict_action_set(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+            prediction_context=context,
+        )
+        self.assertEqual(predicted[0].action_type, GraphActionType.CREATE_EDGE)
+        self.assertEqual(predicted[0].source_node_id, "planner")
+        self.assertEqual(predicted[0].target_node_id, "worker")
+        self.assertEqual(predicted[0].relation_type, "activate")
+
     def test_acg_nap_loader_cleans_noise_and_bootstraps_first_label(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -929,6 +973,19 @@ class PredictDesignTests(unittest.TestCase):
             )
             agent1_node = next(node for node in coding_episode.initial_nodes if node.node_id == "agent1")
             self.assertLessEqual(len(agent1_node.context_text), 480)
+            self.assertIn("profile=", agent1_node.context_text)
+            self.assertIn("context=", agent1_node.context_text)
+            self.assertIsNotNone(bootstrap_step.prediction_context)
+            self.assertIn("very long query prompt", bootstrap_step.prediction_context.query_text)
+            self.assertEqual(bootstrap_step.prediction_context.source_node_id, "agent1")
+            self.assertEqual(
+                bootstrap_step.prediction_context.candidate_actions[0].metadata["description"],
+                "analyst activates coder",
+            )
+            self.assertIn(
+                ("PLANNER", "agent1"),
+                coding_episode.initial_structural_edge_metadata,
+            )
             self.assertIn("activate", corpus.relation_types)
             self.assertIn("retry", corpus.relation_types)
             self.assertIn("delegate_return", corpus.relation_types)
@@ -938,6 +995,10 @@ class PredictDesignTests(unittest.TestCase):
             )
             self.assertGreater(
                 corpus.cleaning_summary["removed_fields"]["graph.nodes.*.context"],
+                0,
+            )
+            self.assertGreater(
+                corpus.cleaning_summary["loaded_fields"]["prediction.transition_candidates"],
                 0,
             )
 

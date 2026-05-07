@@ -27,6 +27,7 @@ from .gnn import ColdStartInitializer, RelationalAttentionLayer
 from .llm import LLMApiGraphActionPredictor
 from .messages import Message, MessageAction
 from .prediction import (
+    GraphPredictionContext,
     GraphActionType,
     PredictedGraphAction,
     PredictionRollout,
@@ -49,6 +50,7 @@ __all__ = [
     "DatasetCorpus",
     "EpisodeStep",
     "ExperimentConfig",
+    "GraphPredictionContext",
     "GraphActionType",
     "LLMApiConfig",
     "LLMApiGraphActionPredictor",

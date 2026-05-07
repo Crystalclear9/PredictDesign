@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..messages import Message
-from ..prediction import GraphActionType, PredictedGraphAction
+from ..prediction import GraphActionType, GraphPredictionContext, PredictedGraphAction
 from ..temporal_graph import TemporalNode
 from .local_results import DatasetCorpus
 from .trainer import BenchmarkSplit, BenchmarkTrainer
@@ -25,6 +25,8 @@ class ACGNapCleaningSummary:
     removed_prediction_query_count: int = 0
     removed_node_profile_count: int = 0
     removed_node_context_count: int = 0
+    loaded_transition_candidate_count: int = 0
+    loaded_node_latest_output_count: int = 0
     max_graph_profile_chars: int = 240
     max_node_text_chars: int = 480
 
@@ -39,6 +41,14 @@ class ACGNapCleaningSummary:
                 "prediction.query": self.removed_prediction_query_count,
                 "graph.nodes.*.profile": self.removed_node_profile_count,
                 "graph.nodes.*.context": self.removed_node_context_count,
+            },
+            "loaded_fields": {
+                "graph.profile": self.removed_graph_profile_count,
+                "prediction.query": self.removed_prediction_query_count,
+                "graph.nodes.*.profile": self.removed_node_profile_count,
+                "graph.nodes.*.context": self.removed_node_context_count,
+                "graph.nodes.*.latest_output": self.loaded_node_latest_output_count,
+                "prediction.transition_candidates": self.loaded_transition_candidate_count,
             },
             "retained_text_limits": {
                 "graph_profile_chars": self.max_graph_profile_chars,
@@ -123,6 +133,8 @@ class ACGNapAdapter:
         workflow_id = str(first_payload.get("workflow_id") or path.stem)
         initial_nodes = self._build_initial_nodes(first_payload, scenario)
         initial_structural_edges = self._build_structural_edges(first_payload)
+        initial_structural_edge_metadata = self._build_structural_edge_metadata(first_payload)
+        initial_graph_context_text = self._bootstrap_query_text(first_payload, scenario=scenario)
         steps = self._build_steps(payloads, initial_nodes, scenario)
         if not steps:
             return None
@@ -134,6 +146,8 @@ class ACGNapAdapter:
             initial_nodes=initial_nodes,
             initial_edges=[],
             initial_structural_edges=initial_structural_edges,
+            initial_graph_context_text=initial_graph_context_text,
+            initial_structural_edge_metadata=initial_structural_edge_metadata,
             steps=steps,
         )
 
@@ -146,6 +160,8 @@ class ACGNapAdapter:
         workflow_id = str(first_payload.get("workflow_id") or path.stem)
         initial_nodes = self._build_initial_nodes(first_payload, scenario)
         initial_structural_edges = self._build_structural_edges(first_payload)
+        initial_structural_edge_metadata = self._build_structural_edge_metadata(first_payload)
+        initial_graph_context_text = self._bootstrap_query_text(first_payload, scenario=scenario)
         steps = self._build_candidate_steps(payloads, initial_nodes, scenario)
         if not steps:
             return None
@@ -156,6 +172,8 @@ class ACGNapAdapter:
             initial_nodes=initial_nodes,
             initial_edges=[],
             initial_structural_edges=initial_structural_edges,
+            initial_graph_context_text=initial_graph_context_text,
+            initial_structural_edge_metadata=initial_structural_edge_metadata,
             steps=steps,
         )
 
@@ -172,11 +190,16 @@ class ACGNapAdapter:
                     self.cleaning_summary.removed_graph_profile_count += 1
                 if payload.get("prediction", {}).get("query"):
                     self.cleaning_summary.removed_prediction_query_count += 1
+                self.cleaning_summary.loaded_transition_candidate_count += len(
+                    payload.get("prediction", {}).get("transition_candidates") or []
+                )
                 for node_payload in (payload.get("graph", {}).get("nodes") or {}).values():
                     if node_payload.get("profile"):
                         self.cleaning_summary.removed_node_profile_count += 1
                     if node_payload.get("context"):
                         self.cleaning_summary.removed_node_context_count += 1
+                    if node_payload.get("latest_output"):
+                        self.cleaning_summary.loaded_node_latest_output_count += 1
         return payloads
 
     def _build_initial_nodes(
@@ -215,6 +238,35 @@ class ACGNapAdapter:
                     edges.add((source_node_id, target_node_id))
         return sorted(edges)
 
+    def _build_structural_edge_metadata(
+        self,
+        payload: dict[str, Any],
+    ) -> dict[tuple[str, str], list[dict[str, str]]]:
+        metadata: dict[tuple[str, str], list[dict[str, str]]] = {}
+        transitions = payload.get("graph", {}).get("transitions") or []
+        for transition in transitions:
+            relation = str(transition.get("type") or "").strip().lower()
+            description = self._compact_text(
+                str(transition.get("description") or ""),
+                self.max_node_text_chars,
+            )
+            transition_id = str(transition.get("id") or "")
+            tails = [str(item) for item in transition.get("tail") or []]
+            heads = [str(item) for item in transition.get("head") or []]
+            for source_node_id in tails:
+                for target_node_id in heads:
+                    if source_node_id == target_node_id:
+                        continue
+                    item = {
+                        "relation_type": relation,
+                        "description": description,
+                        "transition_id": transition_id,
+                    }
+                    bucket = metadata.setdefault((source_node_id, target_node_id), [])
+                    if item not in bucket:
+                        bucket.append(item)
+        return metadata
+
     def _build_steps(
         self,
         payloads: list[dict[str, Any]],
@@ -236,14 +288,22 @@ class ACGNapAdapter:
             score=1.0,
             effective_time=bootstrap_time,
         )
+        bootstrap_candidates = self._candidate_actions(bootstrap_payload, bootstrap_time)
         steps.append(
             EpisodeStep(
                 observation_time=bootstrap_time,
                 messages=bootstrap_messages,
                 ground_truth_action=bootstrap_action,
                 observed_actions=[bootstrap_action],
+                candidate_actions=[self._clone_action(action) for action in bootstrap_candidates],
                 context_updates={node_id: vector for node_id, vector, _ in bootstrap_contexts},
                 context_text_updates={node_id: text for node_id, _, text in bootstrap_contexts},
+                prediction_context=self._prediction_context(
+                    bootstrap_payload,
+                    scenario=scenario,
+                    time_value=bootstrap_time,
+                    candidate_actions=bootstrap_candidates,
+                ),
             )
         )
         for payload in payloads:
@@ -251,6 +311,7 @@ class ACGNapAdapter:
             observed_actions = self._observed_actions(payload, observation_time)
             if not observed_actions:
                 continue
+            candidate_actions = self._candidate_actions(payload, observation_time)
             context_updates = self._context_updates_from_payload(payload, scenario)
             messages = [
                 self._action_to_message(
@@ -266,8 +327,15 @@ class ACGNapAdapter:
                     messages=messages,
                     ground_truth_action=observed_actions[0],
                     observed_actions=observed_actions,
+                    candidate_actions=[self._clone_action(action) for action in candidate_actions],
                     context_updates={node_id: vector for node_id, vector, _ in context_updates},
                     context_text_updates={node_id: text for node_id, _, text in context_updates},
+                    prediction_context=self._prediction_context(
+                        payload,
+                        scenario=scenario,
+                        time_value=observation_time,
+                        candidate_actions=candidate_actions,
+                    ),
                 )
             )
         return steps
@@ -312,6 +380,12 @@ class ACGNapAdapter:
                     candidate_actions=[self._clone_action(action) for action in candidate_actions],
                     context_updates={node_id: vector for node_id, vector, _ in context_updates},
                     context_text_updates={node_id: text for node_id, _, text in context_updates},
+                    prediction_context=self._prediction_context(
+                        payload,
+                        scenario=scenario,
+                        time_value=observation_time,
+                        candidate_actions=candidate_actions,
+                    ),
                 )
             )
         return steps
@@ -347,7 +421,7 @@ class ACGNapAdapter:
         if not relation or source_node_id is None or not targets:
             return []
         self._seen_relation_types.add(relation)
-        return [
+        actions = [
             PredictedGraphAction(
                 action_type=GraphActionType.CREATE_EDGE,
                 score=1.0,
@@ -358,6 +432,9 @@ class ACGNapAdapter:
             )
             for target_node_id in targets
         ]
+        for action in actions:
+            action.metadata["description"] = self._transition_description(payload, action)
+        return actions
 
     def _candidate_actions(
         self,
@@ -389,9 +466,59 @@ class ACGNapAdapter:
                         source_node_id=str(source_node_id),
                         target_node_id=target_node_id,
                         relation_type=relation,
+                        metadata={
+                            "transition_id": str(candidate.get("transition_id") or ""),
+                            "description": self._compact_text(
+                                str(candidate.get("description") or ""),
+                                self.max_node_text_chars,
+                            ),
+                        },
                     )
                 )
         return actions
+
+    def _prediction_context(
+        self,
+        payload: dict[str, Any],
+        scenario: str,
+        time_value: float,
+        candidate_actions: list[PredictedGraphAction],
+    ) -> GraphPredictionContext:
+        prediction = payload.get("prediction") or {}
+        source_node_id = prediction.get("source")
+        graph_profile = self._compact_text(
+            str(payload.get("graph", {}).get("profile") or ""),
+            self.max_graph_profile_chars,
+        )
+        query_text = self._compact_text(
+            str(prediction.get("query") or ""),
+            self.max_node_text_chars,
+        )
+        source_output_text = ""
+        nodes_payload = payload.get("graph", {}).get("nodes") or {}
+        if source_node_id is not None and str(source_node_id) in nodes_payload:
+            source_output_text = self._node_context_text(
+                node_id=str(source_node_id),
+                node_payload=nodes_payload[str(source_node_id)],
+                role=self._extract_role(
+                    node_id=str(source_node_id),
+                    node_payload=nodes_payload[str(source_node_id)],
+                    scenario=scenario,
+                ),
+            )
+        return GraphPredictionContext(
+            source_node_id=str(source_node_id) if source_node_id is not None else None,
+            query_text=query_text,
+            graph_profile_text=graph_profile,
+            source_output_text=source_output_text,
+            candidate_actions=[self._clone_action(action) for action in candidate_actions],
+            metadata={
+                "scenario": scenario,
+                "workflow_id": str(payload.get("workflow_id") or ""),
+                "sample_id": str(payload.get("sample_id") or ""),
+                "time_step": str(time_value),
+            },
+        )
 
     def _build_source_output_message(
         self,
@@ -457,9 +584,25 @@ class ACGNapAdapter:
             str(payload.get("graph", {}).get("profile") or ""),
             self.max_graph_profile_chars,
         )
-        if graph_profile:
-            return f"{scenario} workflow {workflow_id}: {graph_profile}"
-        return f"{scenario} workflow {workflow_id}"
+        transition_catalog = self._transition_catalog_text(payload)
+        parts = [f"{scenario} workflow {workflow_id}", graph_profile, transition_catalog]
+        return self._compact_text(
+            "\n".join(part for part in parts if part.strip()),
+            self.max_graph_profile_chars + self.max_node_text_chars,
+        )
+
+    def _transition_catalog_text(self, payload: dict[str, Any]) -> str:
+        snippets: list[str] = []
+        for transition in (payload.get("graph", {}).get("transitions") or [])[:12]:
+            relation = str(transition.get("type") or "").strip().lower()
+            tails = ",".join(str(item) for item in transition.get("tail") or [])
+            heads = ",".join(str(item) for item in transition.get("head") or [])
+            description = self._compact_text(
+                str(transition.get("description") or ""),
+                160,
+            )
+            snippets.append(f"{relation}:{tails}->{heads}; {description}".strip())
+        return self._compact_text(" | ".join(snippets), self.max_node_text_chars)
 
     def _build_query_messages(
         self,
@@ -554,13 +697,26 @@ class ACGNapAdapter:
         node_payload: dict[str, Any],
         role: str,
     ) -> str:
+        profile = self._compact_text(
+            str(node_payload.get("profile") or ""),
+            self.max_node_text_chars,
+        )
+        context = self._compact_text(
+            str(node_payload.get("context") or ""),
+            self.max_node_text_chars,
+        )
         latest_output = self._compact_text(
             str(node_payload.get("latest_output") or ""),
             self.max_node_text_chars,
         )
+        parts = [f"role={role}", f"node={node_id}"]
+        if profile:
+            parts.append(f"profile={profile}")
+        if context:
+            parts.append(f"context={context}")
         if latest_output:
-            return f"role={role}; node={node_id}; latest_output={latest_output}"
-        return f"role={role}; node={node_id}"
+            parts.append(f"latest_output={latest_output}")
+        return self._compact_text("; ".join(parts), self.max_node_text_chars)
 
     def _compact_text(self, text: str, max_chars: int) -> str:
         normalized = re.sub(r"\s+", " ", text or "").strip()
@@ -595,6 +751,7 @@ class ACGNapAdapter:
             relation_type=action.relation_type,
             role=action.role,
             new_node_id=action.new_node_id,
+            metadata=dict(action.metadata),
         )
 
     def _text_to_context(self, text: str) -> list[float]:
