@@ -639,7 +639,9 @@ class PredictDesignTests(unittest.TestCase):
             )
         ]
         results = evaluator.evaluate_dataset("toyset", episodes)
-        self.assertEqual(len(results), 6)
+        self.assertEqual(len(results), 10)
+        self.assertIn("hybrid", {item.gnn_type for item in results})
+        self.assertIn("relational_transformer", {item.gnn_type for item in results})
         self.assertTrue(all(item.total_steps == 1 for item in results))
 
     def test_holdout_split_uses_fixed_80_20_partition(self) -> None:
@@ -775,6 +777,118 @@ class PredictDesignTests(unittest.TestCase):
         self.assertEqual(predicted[0].source_node_id, "planner")
         self.assertEqual(predicted[0].target_node_id, "worker")
         self.assertEqual(predicted[0].relation_type, "activate")
+
+    def test_hybrid_backbone_supports_context_candidate_scoring(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="hybrid",
+            candidate_relation_types=("activate", "delegate"),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("planner", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("worker", "worker", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ],
+            graph_context_text="planner activates worker",
+        )
+        context = GraphPredictionContext(
+            source_node_id="planner",
+            query_text="activate worker",
+            candidate_actions=[
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=1.0,
+                    source_node_id="planner",
+                    target_node_id="worker",
+                    relation_type="activate",
+                    metadata={"description": "planner activates worker"},
+                )
+            ],
+        )
+        bundle = system.predictor.score_action_space(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+            prediction_context=context,
+        )
+        self.assertIsNotNone(bundle.context_embedding)
+        self.assertIsNotNone(bundle.action_type_context_logits)
+        self.assertIsNotNone(bundle.candidate_scores)
+        self.assertEqual(len(bundle.candidate_actions), 1)
+
+    def test_structural_candidate_prior_lifts_matching_transition(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("activate",),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            use_context_conditioning=False,
+            use_candidate_cross_encoder=False,
+            candidate_text_score_weight=0.0,
+            candidate_structural_prior_weight=10.0,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("planner", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("worker", "worker", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("reviewer", "worker", [0, 0, 1, 0, 0, 0], 6, "cpu"),
+            ],
+            structural_edges=[("planner", "worker")],
+            structural_edge_metadata={
+                ("planner", "worker"): [
+                    {
+                        "relation_type": "activate",
+                        "transition_id": "activate_worker",
+                        "description": "planner activates worker",
+                    }
+                ]
+            },
+        )
+        context = GraphPredictionContext(
+            source_node_id="planner",
+            candidate_actions=[
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=1.0,
+                    source_node_id="planner",
+                    target_node_id="worker",
+                    relation_type="activate",
+                    metadata={
+                        "transition_id": "activate_worker",
+                        "description": "planner activates worker",
+                    },
+                ),
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=1.0,
+                    source_node_id="planner",
+                    target_node_id="reviewer",
+                    relation_type="activate",
+                    metadata={"description": "planner activates reviewer"},
+                ),
+            ],
+        )
+        bundle = system.predictor.score_action_space(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+            prediction_context=context,
+        )
+        self.assertIsNotNone(bundle.candidate_scores)
+        self.assertGreater(
+            float(bundle.candidate_scores[0].item()),
+            float(bundle.candidate_scores[1].item()),
+        )
 
     def test_acg_nap_loader_cleans_noise_and_bootstraps_first_label(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1193,6 +1307,7 @@ class PredictDesignTests(unittest.TestCase):
             )
             self.assertEqual(len(result.combinations), 7)
             self.assertEqual(len(result.datasets), 1)
+            self.assertEqual(result.sentence_transformer_model, "fallback_hash_16")
             self.assertTrue(Path(result.report_path).exists())
             self.assertTrue(Path(result.csv_path).exists())
             self.assertTrue(Path(result.chart_path).exists())

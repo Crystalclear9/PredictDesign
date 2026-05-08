@@ -45,7 +45,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--message-reduce-mode", type=str, default="attention")
     parser.add_argument("--state-updater", type=str, default="gru")
-    parser.add_argument("--gnn-type", type=str, default="relational_transformer")
+    parser.add_argument("--gnn-type", type=str, default="hybrid")
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--sentence-transformer-path", type=str, default="all-MiniLM-L6-v2")
     parser.add_argument("--sentence-transformer-dim", type=int, default=384)

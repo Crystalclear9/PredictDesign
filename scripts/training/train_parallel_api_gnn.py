@@ -45,7 +45,7 @@ def main() -> None:
     parser.add_argument(
         "--gnn-types",
         nargs="*",
-        default=["gcn", "graphsage", "gat", "relational_transformer"],
+        default=["hybrid", "relational_transformer", "gcn", "graphsage", "gat"],
     )
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--sentence-transformer-path", type=str, default="all-MiniLM-L6-v2")

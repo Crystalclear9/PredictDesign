@@ -1,221 +1,389 @@
-﻿# PredictDesign
+# PredictDesign
 
-PredictDesign 是一个面向多智能体协作过程的时序图预测实验框架。仓库当前包含三类核心能力：
+PredictDesign 是一个面向多智能体协作过程的时序图预测实验框架。它把一次多智能体任务执行过程建模为连续时间动态图，学习在某个观察时刻之后应该新增、删除哪些协作边，或是否需要新增节点。
 
-- 图建模与预测：时序图、CTDG 状态更新、Relational Transformer、富元数据冷启动、候选动作重排、节点完成检测。
-- 基准数据与日志：ACG-NAP 多源适配、MultiAgentBench / MARBLE 结果读取、rich log 导出。
-- 训练与评估：基于 rich log 的 MLP 训练、基于图结构的 GNN 训练、批量实验脚本。
+当前代码重点支持三类工作：
+
+- 图预测模型：TemporalGraph、CTDG 状态更新、Hybrid GNN / Relational Transformer、冷启动、候选动作重排、节点完成检测。
+- benchmark 适配：ACG-NAP、MultiAgentBench / MARBLE、本地 rich log。
+- 训练与评估：GNN holdout / candidate rerank、rich log MLP、LLM API predictor、批量 benchmark runner。
 
 当前版本：`0.2.0`
 
-## 环境要求
+## 快速运行
 
-- Python `>= 3.11`
-- 推荐使用虚拟环境
-- 主要 Python 依赖见 [pyproject.toml](C:/Users/70454/Desktop/PredictDesign/pyproject.toml)
+### 1. 安装
 
-安装：
+要求 Python `>=3.11`。
 
-```bash
+```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .[dev]
 ```
 
-最小验证：
+最小导入验证：
 
-```bash
+```powershell
 python -c "import predictdesign; print('OK')"
 ```
 
-## 当前目录结构
+### 2. 跑离线示例
+
+这些示例默认使用本地 hash text encoder，不会下载 SentenceTransformer 模型。
+
+```powershell
+python examples\minimal_demo.py
+python examples\rt_demo.py
+python examples\llm_api_predictor_example.py
+```
+
+示例说明已经集中在本文档的“运行示例”部分。
+
+### 3. 跑测试
+
+```powershell
+python tests\test_predictdesign.py
+```
+
+可选：
+
+```powershell
+pytest
+```
+
+### 4. 清理缓存
+
+预览：
+
+```powershell
+python scripts\cleanup_workspace.py
+```
+
+执行：
+
+```powershell
+python scripts\cleanup_workspace.py --execute
+```
+
+## 项目目录
 
 ```text
 PredictDesign/
-|- predictdesign/            # 核心库代码
-|- scripts/                  # 运行、训练、运维脚本
-|  |- benchmark/             # benchmark 运行与 rich log 导出
-|  |- training/              # MLP / GNN 训练与评估
-|  `- ops/                   # 清理、监控、长任务启动
-|- examples/                 # 最小示例与 RT 示例
-|- tests/                    # 自动化测试
-|- data/                     # 本地数据目录
-|  `- acg_nap/
-|- vendor/                   # 第三方基准代码
-|  `- prefetch-kv-mas/
-|- results/                  # 实验输出、日志、归档结果
-|- docs/                     # 结构与维护说明
+|- predictdesign/            # 可复用库代码
+|  |- benchmark/             # benchmark 适配、rich log、训练/评估封装
+|  |- gnn/                   # GNN/RT/hybrid 图骨干、冷启动、动作预测器
+|  |- llm/                   # OpenAI-compatible LLM predictor
+|  `- state_update/          # GRU / MDP 状态更新器
+|- examples/                 # 离线可运行示例
+|- scripts/                  # 命令行入口与运维脚本
+|  |- benchmark/             # benchmark runner 与 rich log 导出
+|  |- training/              # MLP/GNN 训练与评估
+|  `- ops/                   # 清理、监控、长任务 shell launcher
+|- tests/                    # 单元测试与回归测试
+|- data/                     # 本地数据目录，例如 data/acg_nap/
+|- results/                  # 实验输出、报告、归档结果
+|- docs/                     # 维护说明
+|- vendor/                   # 第三方 benchmark 代码
 |- README.md
 `- pyproject.toml
 ```
 
 目录约定：
 
-- `predictdesign/` 只放可复用库代码。
-- `scripts/benchmark/` 只放 benchmark 运行和日志导出脚本。
-- `scripts/training/` 只放训练与评估脚本。
-- `scripts/ops/` 只放清理、监控、shell 启动器。
-- `results/` 放运行结果，不把产物写回源码目录。
-- 路径常量统一定义在 [predictdesign/paths.py](C:/Users/70454/Desktop/PredictDesign/predictdesign/paths.py)。
+- `predictdesign/` 只放库代码，不写训练产物。
+- `examples/` 只放小型可运行示例，不放缓存和结果。
+- `scripts/benchmark/` 放 benchmark 运行与日志导出。
+- `scripts/training/` 放训练、评估、checkpoint/result 读取。
+- `scripts/ops/` 放清理、监控和长任务启动器。
+- `results/` 放报告、图表、运行输出。
+- `data/` 放本地数据，不提交大体积数据。
+- 路径常量集中在 [predictdesign/paths.py](predictdesign/paths.py)。
 
-## 核心模块
+## 代码框架
 
-### 1. 图建模与预测
+### 核心数据流
 
-位于 `predictdesign/`：
-
-- `temporal_graph.py`：时序节点、边和图容器
-- `ctdg.py`：连续时间动态图状态记录
-- `encoders.py`：SentenceTransformer 文本编码与节点特征编码
-- `completion.py`：节点完成检测
-- `experiment.py`：顶层 `PredictDesignSystem`
-- `prediction.py`：图动作、rollout 与 `GraphPredictionContext`
-- `gnn/`：Relational Transformer、冷启动、候选动作重排与预测器
-- `state_update/`：GRU / MDP 状态更新
-- `llm/`：LLM API 预测器
-
-公开 API 入口在 [predictdesign/__init__.py](C:/Users/70454/Desktop/PredictDesign/predictdesign/__init__.py)。
-
-### 2. benchmark 与日志
-
-位于 `predictdesign/benchmark/`：
-
-- `acg_nap.py`：ACG-NAP 语料适配
-- `multiagentbench.py`：MultiAgentBench / MARBLE 结果适配
-- `rich_log.py`：rich log 写出、组合训练结果与图表输出
-- `trainer.py` / `evaluator.py`：训练与评估逻辑
-
-### 3. 冷启动与多源条件化
-
-当前 GNN 冷启动不再只处理空图 fallback。ACG-NAP 适配器会加载并压缩这些来源：
-
-- `graph.profile`：任务说明、工作流协议与全局约束
-- `graph.nodes.*.profile` / `context` / `latest_output`：角色能力、当前状态和最近输出
-- `graph.transitions`：结构边、关系类型和 transition 描述
-- `prediction.source` / `prediction.query`：当前预测请求的源节点和 prompt
-- `prediction.transition_candidates`：候选 relation/target/description
-
-这些信息会进入 `GraphPredictionContext`，并通过 `GraphActionPredictor.score_action_space(..., prediction_context=...)` 参与打分。候选集存在时，预测器优先对候选动作排序；没有候选集时，仍然回退到完整图动作空间。通用 trainer/evaluator 和 ACG-NAP candidate trainer 都会沿 rollout 传递 step 级上下文；LLM API backend 也会把同一份上下文写入预测 prompt。初始化已有节点时，`PredictDesignSystem.initialize_graph(...)` 会把图级文本、节点文本和结构边描述用于 CTDG 初始状态，避免已有节点从纯零状态开始。
-
-### 4. 脚本入口
-
-脚本已经按职责拆分：
-
-- [scripts/benchmark](C:/Users/70454/Desktop/PredictDesign/scripts/benchmark)
-- [scripts/training](C:/Users/70454/Desktop/PredictDesign/scripts/training)
-- [scripts/ops](C:/Users/70454/Desktop/PredictDesign/scripts/ops)
-
-同时保留了一层兼容包装，下面这些命令仍然可以直接使用：
-
-```bash
-python scripts/run_parallel_api_rich_logs.py
-python scripts/run_marble_hitk_benchmark.py
-python scripts/train_rich_log_mlp.py
-python scripts/train_parallel_api_gnn.py
-python scripts/cleanup_workspace.py
-python scripts/monitor_full_runs.py
+```text
+raw benchmark logs / local records
+        |
+        v
+BenchmarkEpisode / EpisodeStep
+        |
+        v
+PredictDesignSystem.initialize_graph(...)
+        |
+        +--> TemporalGraph: nodes, temporal edges, structural edges, metadata
+        +--> CTDG: continuous-time node states and message history
+        |
+        v
+GraphActionPredictor / LLMApiGraphActionPredictor
+        |
+        v
+PredictedGraphAction / PredictionRollout / PredictionSubgraphRollout
+        |
+        v
+BenchmarkTrainer / BenchmarkEvaluator / scripts
 ```
 
-脚本说明见 [scripts/README.md](C:/Users/70454/Desktop/PredictDesign/scripts/README.md)。
+### 关键模块
 
-## 快速开始
+- [predictdesign/temporal_graph.py](predictdesign/temporal_graph.py)
+  定义 `TemporalNode`、`TemporalEdge`、`TemporalGraph`。图中同时保存时序边、结构边、结构边 metadata 和图级上下文文本。
 
-### 1. 运行示例
+- [predictdesign/ctdg.py](predictdesign/ctdg.py)
+  连续时间动态图状态容器，保存节点 hidden state、message history 和 state history。
 
-```bash
-python examples/minimal_demo.py
-python examples/rt_demo.py
-python examples/llm_api_predictor_example.py
+- [predictdesign/messages.py](predictdesign/messages.py)
+  定义 query/completion message。message 会被编码后用于更新 CTDG 节点状态。
+
+- [predictdesign/encoders.py](predictdesign/encoders.py)
+  文本、角色、时间、节点和消息编码器。SentenceTransformer 不可用或使用 fallback sentinel 时，会走本地 hash encoder。
+
+- [predictdesign/prediction.py](predictdesign/prediction.py)
+  定义 `GraphActionType`、`PredictedGraphAction`、`GraphPredictionContext`、rollout 结果对象。
+
+- [predictdesign/experiment.py](predictdesign/experiment.py)
+  顶层 `PredictDesignSystem`，负责组装图、CTDG、state updater、predictor 和 query parser。
+
+- [predictdesign/gnn/layers.py](predictdesign/gnn/layers.py)
+  GCN、GraphSAGE、GAT、Relational Transformer 和 `HybridGraphLayer`。
+
+- [predictdesign/gnn/predictor.py](predictdesign/gnn/predictor.py)
+  图动作预测器。它负责图编码、候选动作打分、action type/count 打分、completion-aware 调整和 rollout apply。
+
+- [predictdesign/benchmark/](predictdesign/benchmark)
+  负责把不同数据源变成统一的 `BenchmarkEpisode`，并提供训练、评估、rich log 输出。
+
+### 训练样本结构
+
+`BenchmarkEpisode` 是训练/评估的主样本：
+
+- `initial_nodes`：初始节点。
+- `initial_edges`：初始时序边。
+- `initial_structural_edges`：workflow 或 benchmark 给出的结构边。
+- `initial_graph_context_text`：图级任务描述。
+- `initial_structural_edge_metadata`：transition relation、transition id、description。
+- `steps`：按时间排列的 `EpisodeStep`。
+
+`EpisodeStep` 包含：
+
+- `observation_time`：观察时刻。
+- `messages`：当前时刻被 CTDG ingest 的消息。
+- `observed_actions`：真实发生的图动作。
+- `valid_next_actions`：下一步监督动作，支持 parallel valid actions。
+- `candidate_actions`：候选动作列表。
+- `context_updates` / `context_text_updates`：节点上下文更新。
+- `prediction_context`：当前 source/query/profile/latest output/candidate transition 等条件信息。
+
+## 当前推荐模型
+
+默认推荐强模型是：
+
+```python
+ExperimentConfig(
+    gnn_type="hybrid",
+    use_context_conditioning=True,
+    use_candidate_cross_encoder=True,
+    use_structural_candidate_priors=True,
+)
 ```
 
-### 2. 查看可用脚本参数
+`hybrid` 每层融合四种图视角：
 
-```bash
-python scripts/run_parallel_api_rich_logs.py --help
-python scripts/train_rich_log_mlp.py --help
-python scripts/training/train_acg_nap_gnn.py --help
+- GCN：稳定局部聚合。
+- GraphSAGE：自身状态与邻居状态对比。
+- GAT：可学习邻居注意力。
+- Relational Transformer：角色注意力、结构邻居注意力、全局注意力和 gated MLP。
+
+预测器额外使用：
+
+- 上下文条件化：`GraphPredictionContext` 会门控更新节点 embedding、图 embedding 和 action type logits。
+- 候选 cross-encoder：对 source/target/graph/context/text/relation/edge 特征联合打分。
+- 结构先验：结构 transition metadata 与候选动作匹配时会加分。
+- 冷启动初始化：已有节点不再从纯零 state 开始，而是融合 role、节点文本、图级 profile 和结构边描述。
+
+这些能力是模型能力层面的增强；实际收益仍应通过 holdout 或交叉验证确认。
+
+## SentenceTransformer fallback
+
+如果 `sentence_transformer_path` 或 rich log MLP 的 `sentence_transformer_model` 使用下面前缀，代码会直接启用本地 hash text encoder，不会访问 HuggingFace：
+
+- `__missing_*`
+- `__fallback_*`
+- `fallback_hash_*`
+
+示例：
+
+```python
+config = ExperimentConfig(
+    sentence_transformer_path="__fallback_sentence_transformer__",
+)
 ```
 
-### 3. 清理工作区缓存
+真实实验建议传入可访问的模型名或本地模型路径，例如：
 
-预览：
-
-```bash
-python scripts/cleanup_workspace.py
+```powershell
+python scripts\training\train_acg_nap_gnn.py --sentence-transformer-path C:\models\all-MiniLM-L6-v2
 ```
 
-执行清理：
+## 运行示例
 
-```bash
-python scripts/cleanup_workspace.py --execute
+### Minimal Hybrid Demo
+
+```powershell
+python examples\minimal_demo.py
 ```
 
-连同旧 smoke 结果一起归档：
+演示内容：
 
-```bash
-python scripts/cleanup_workspace.py --execute --archive-smoke-results
+- 初始化三节点 workflow。
+- 注入图级上下文和结构边 metadata。
+- 构造 `GraphPredictionContext`。
+- 使用 `hybrid` + candidate cross-encoder 输出候选动作排序。
+
+### RT / Hybrid 对比
+
+```powershell
+python examples\rt_demo.py
 ```
 
-## 结果与数据约定
+演示内容：
 
-- 本地数据：`data/`
-- 第三方 benchmark 代码：`vendor/`
-- 运行结果：`results/`
-- 归档结果：`results/archive/`
+- 构建同一个 toy episode。
+- 分别使用 `relational_transformer` 和 `hybrid` 预测。
+- 跑一个极小 supervised update，展示 trainer API。
 
-对于需要访问仓库内固定路径的代码，优先使用 `predictdesign.paths` 提供的常量，而不是在脚本里重复硬编码目录字符串。
+### LLM API Predictor
 
-## 常见工作流
+默认离线假 completion：
 
-### 导出并训练 rich log
-
-```bash
-python scripts/run_parallel_api_rich_logs.py --help
-python scripts/train_rich_log_mlp.py --help
+```powershell
+python examples\llm_api_predictor_example.py
 ```
 
-### 训练图模型
+真实 OpenAI-compatible endpoint：
 
-```bash
-python scripts/training/train_acg_nap_gnn.py --help
-python scripts/train_parallel_api_gnn.py --help
+```powershell
+$env:PREDICTDESIGN_LLM_API_KEY="..."
+$env:PREDICTDESIGN_LLM_BASE_URL="https://api.siliconflow.cn/v1"
+$env:PREDICTDESIGN_LLM_MODEL="Qwen/Qwen2.5-Coder-32B-Instruct"
+python examples\llm_api_predictor_example.py --real
 ```
 
-### ACG-NAP 候选动作重排
+## 训练和评估
 
-```bash
-python scripts/training/train_acg_nap_candidate_gnn.py --help
+### ACG-NAP GNN holdout
+
+查看参数：
+
+```powershell
+python scripts\training\train_acg_nap_gnn.py --help
 ```
 
-该脚本使用 `transition_candidates` 做当前步候选重排训练。它会把 source/query/profile/latest output/candidate description 一起传入预测器，但不会自动运行大规模实验。
+推荐强模型入口：
 
-### 监控长任务
-
-```bash
-python scripts/monitor_full_runs.py --help
+```powershell
+python scripts\training\train_acg_nap_gnn.py --gnn-types hybrid
 ```
 
-## 维护说明
+常用参数：
 
-维护约束已经做过一轮收敛，后续建议继续遵守：
+- `--acg-nap-root`：ACG-NAP 数据目录，默认来自 `predictdesign.paths.ACG_NAP_ROOT`。
+- `--train-epochs`：训练 epoch。
+- `--train-fraction`：holdout 训练比例。
+- `--sentence-transformer-path`：真实模型名、本地路径或 fallback sentinel。
+- `--max-files-per-dataset`：调试时限制每个 dataset 的文件数，`0` 表示不限制。
 
-- 新增训练脚本放到 `scripts/training/`
-- 新增 benchmark runner 放到 `scripts/benchmark/`
-- 新增清理或监控脚本放到 `scripts/ops/`
-- 不要把缓存、日志、模型产物写到 `predictdesign/`、`tests/` 或 `examples/`
-- 修改仓库路径时，同步更新 `predictdesign.paths`
+### ACG-NAP candidate rerank
 
-补充说明见 [docs/PROJECT_STRUCTURE.md](C:/Users/70454/Desktop/PredictDesign/docs/PROJECT_STRUCTURE.md)。
-
-## 测试
-
-```bash
-pytest
+```powershell
+python scripts\training\train_acg_nap_candidate_gnn.py --help
+python scripts\training\train_acg_nap_candidate_gnn.py --gnn-type hybrid
 ```
 
-如果只做安装验证，至少执行：
+该脚本把 `prediction.transition_candidates` 当成当前步候选集，训练候选排序分数。它会使用 source、query、profile、latest output 和 candidate description。
 
-```bash
-python -c "import predictdesign; print('OK')"
-python examples/minimal_demo.py
+### Rich Log MLP
+
+```powershell
+python scripts\train_rich_log_mlp.py --help
+```
+
+用途：
+
+- 从 rich log 中抽取 query、node outputs、graph structure。
+- 比较不同信息组合的 MLP 分类效果。
+- 结果输出到 `results/`。
+
+### MultiAgentBench / MARBLE
+
+```powershell
+python scripts\benchmark\run_multiagentbench_eval.py --help
+python scripts\benchmark\run_marble_hitk_benchmark.py --help
+```
+
+`scripts/benchmark/` 下是主入口；根目录 `scripts/run_*.py` 是兼容包装。
+
+## 脚本目录
+
+脚本说明已经集中在本文档的“脚本目录”部分。
+
+常用入口：
+
+```powershell
+python scripts\run_parallel_api_rich_logs.py --help
+python scripts\run_marble_hitk_benchmark.py --help
+python scripts\train_rich_log_mlp.py --help
+python scripts\train_parallel_api_gnn.py --help
+python scripts\cleanup_workspace.py --help
+python scripts\monitor_full_runs.py --help
+```
+
+按职责使用新路径：
+
+```powershell
+python scripts\benchmark\export_rich_log.py --help
+python scripts\benchmark\run_multiagentbench_eval.py --help
+python scripts\training\train_acg_nap_gnn.py --help
+python scripts\training\train_existing_results_gnn.py --help
+python scripts\ops\cleanup_workspace.py --help
+```
+
+## 输出和缓存
+
+默认约定：
+
+- 运行报告、CSV、图片、checkpoint 写入 `results/`。
+- 本地输入数据放入 `data/`。
+- 第三方 benchmark 代码放入 `vendor/`。
+- 不要把 `__pycache__`、`.pytest_cache`、临时结果、模型产物写入 `predictdesign/`、`examples/` 或 `tests/`。
+
+清理命令：
+
+```powershell
+python scripts\cleanup_workspace.py --execute
+```
+
+归档旧 smoke 结果：
+
+```powershell
+python scripts\cleanup_workspace.py --execute --archive-smoke-results
+```
+
+## 开发建议
+
+- 新增库能力先放在 `predictdesign/`，再从 scripts 或 examples 调用。
+- 新增 benchmark 数据适配器放在 `predictdesign/benchmark/`。
+- 新增训练脚本放在 `scripts/training/`。
+- 新增 benchmark runner 放在 `scripts/benchmark/`。
+- 新增清理、监控、shell 启动器放在 `scripts/ops/`。
+- 新增示例需要能离线运行，优先使用 fallback text encoder 或 fake completion。
+- 修改路径时同步检查 [predictdesign/paths.py](predictdesign/paths.py)。
+- 改动模型行为后至少运行：
+
+```powershell
+python -m compileall predictdesign examples scripts tests
+python tests\test_predictdesign.py
+python examples\minimal_demo.py
 ```

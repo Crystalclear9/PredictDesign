@@ -387,7 +387,7 @@ def main() -> None:
     parser.add_argument("--learning-rate", type=float, default=1e-2)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--train-fraction", type=float, default=0.8)
-    parser.add_argument("--gnn-types", nargs="*", default=["gcn", "graphsage", "gat"])
+    parser.add_argument("--gnn-types", nargs="*", default=["hybrid", "relational_transformer", "gcn", "graphsage", "gat"])
     parser.add_argument("--llm-api-key", type=str, default=LLMApiConfig().api_key)
     parser.add_argument("--llm-base-url", type=str, default=LLMApiConfig().base_url)
     parser.add_argument("--llm-model", type=str, default=LLMApiConfig().model)

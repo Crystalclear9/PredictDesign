@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument("--learning-rate", type=float, default=1e-2)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--train-fraction", type=float, default=0.8)
-    parser.add_argument("--gnn-types", nargs="*", default=["gcn", "graphsage", "gat"])
+    parser.add_argument("--gnn-types", nargs="*", default=["hybrid", "relational_transformer", "gcn", "graphsage", "gat"])
     parser.add_argument("--hit-k-values", nargs="*", type=int, default=[1, 3, 5])
     parser.add_argument("--rich-log-path", type=str, default=None)
     parser.add_argument("--train-rich-log-mlp", action="store_true")

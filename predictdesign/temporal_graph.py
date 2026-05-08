@@ -87,6 +87,7 @@ class TemporalGraph:
         target_node_id: str,
         relation_type: str | None = None,
         description: str | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> None:
         if source_node_id not in self.nodes or target_node_id not in self.nodes:
             raise KeyError("Both structural edge endpoints must exist in the temporal graph.")
@@ -94,11 +95,12 @@ class TemporalGraph:
             return
         key = (source_node_id, target_node_id)
         self.structural_edges.add(key)
-        if relation_type or description:
-            item = {
-                "relation_type": str(relation_type or ""),
-                "description": str(description or ""),
-            }
+        if relation_type or description or metadata:
+            item = {str(key): str(value) for key, value in (metadata or {}).items()}
+            if relation_type is not None:
+                item["relation_type"] = str(relation_type)
+            if description is not None:
+                item["description"] = str(description)
             bucket = self.structural_edge_metadata.setdefault(key, [])
             if item not in bucket:
                 bucket.append(item)

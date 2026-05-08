@@ -23,7 +23,7 @@ from .config import ExperimentConfig, LLMApiConfig
 from .ctdg import ContinuousTimeDynamicGraph, StateRecord
 from .encoders import SentenceTransformerEncoder
 from .experiment import PredictDesignSystem
-from .gnn import ColdStartInitializer, RelationalAttentionLayer
+from .gnn import ColdStartInitializer, HybridGraphLayer, RelationalAttentionLayer
 from .llm import LLMApiGraphActionPredictor
 from .messages import Message, MessageAction
 from .prediction import (
@@ -52,6 +52,7 @@ __all__ = [
     "ExperimentConfig",
     "GraphPredictionContext",
     "GraphActionType",
+    "HybridGraphLayer",
     "LLMApiConfig",
     "LLMApiGraphActionPredictor",
     "MDPTransitionSummary",

@@ -272,7 +272,12 @@ def main() -> None:
     parser.add_argument("--train-fraction", type=float, default=0.8)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--gnn-type", type=str, default="gcn")
+    parser.add_argument(
+        "--gnn-type",
+        type=str,
+        default="hybrid",
+        choices=["gcn", "graphsage", "gat", "relational_transformer", "hybrid"],
+    )
     parser.add_argument("--state-updater", type=str, default="gru")
     parser.add_argument("--message-reduce-mode", type=str, default="attention")
     parser.add_argument("--sentence-transformer-path", type=str, required=True)

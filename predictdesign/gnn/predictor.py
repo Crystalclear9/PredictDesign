@@ -40,6 +40,8 @@ class ActionScoreBundle:
     graph_embedding: torch.Tensor
     completion_scores: torch.Tensor | None = None
     prediction_context: GraphPredictionContext | None = None
+    context_embedding: torch.Tensor | None = None
+    action_type_context_logits: torch.Tensor | None = None
     candidate_actions: list[PredictedGraphAction] | None = None
     candidate_scores: torch.Tensor | None = None
 
@@ -95,6 +97,42 @@ class GraphActionPredictor(nn.Module):
         # Attention pooling for graph-level embedding
         self.attn_pool_query = nn.Parameter(torch.randn(config.hidden_dim) * 0.02)
         self.attn_pool_key = nn.Linear(config.hidden_dim, config.hidden_dim, bias=False)
+        self.context_node_fusion = nn.Sequential(
+            nn.Linear(config.hidden_dim * 4, config.hidden_dim),
+            nn.SiLU(),
+            nn.Linear(config.hidden_dim, config.hidden_dim),
+        )
+        self.context_node_gate = nn.Sequential(
+            nn.Linear(config.hidden_dim * 4, config.hidden_dim),
+            nn.Sigmoid(),
+        )
+        self.context_graph_fusion = nn.Sequential(
+            nn.Linear(config.hidden_dim * 2, config.hidden_dim),
+            nn.SiLU(),
+            nn.Linear(config.hidden_dim, config.hidden_dim),
+        )
+        self.context_graph_gate = nn.Sequential(
+            nn.Linear(config.hidden_dim * 2, config.hidden_dim),
+            nn.Sigmoid(),
+        )
+        self.action_context_head = nn.Sequential(
+            nn.Linear(config.hidden_dim * 2, config.hidden_dim),
+            nn.SiLU(),
+            nn.Linear(config.hidden_dim, 4),
+        )
+        self.relation_hidden_embedding = nn.Embedding(
+            len(config.candidate_relation_types),
+            config.hidden_dim,
+        )
+        self.candidate_edge_projection = nn.Linear(config.temporal_edge_dim, config.hidden_dim)
+        self.candidate_cross_encoder = nn.Sequential(
+            nn.Linear(config.hidden_dim * 9, config.hidden_dim * 2),
+            nn.SiLU(),
+            nn.Dropout(config.rt_dropout),
+            nn.Linear(config.hidden_dim * 2, config.hidden_dim),
+            nn.SiLU(),
+            nn.Linear(config.hidden_dim, 1),
+        )
 
         # Cold start initializer
         self._text_encoder_for_cold_start: SentenceTransformerEncoder | None = None
@@ -365,13 +403,25 @@ class GraphActionPredictor(nn.Module):
             ctdg=ctdg,
             observation_time=observation_time,
         )
-        graph_embedding = self.graph_embedding_from_encoded(node_embeddings)
-
         # Number of actual nodes (cold start may add virtual embeddings)
         n_actual = len(node_order)
 
         # Use only actual node embeddings for edge scoring
         actual_embeddings = node_embeddings[:n_actual] if node_embeddings.size(0) > n_actual else node_embeddings
+        graph_source_embeddings = actual_embeddings if n_actual > 0 else node_embeddings
+        graph_embedding = self.graph_embedding_from_encoded(graph_source_embeddings)
+        context_embedding = self._context_text_embedding(prediction_context)
+        if self.config.use_context_conditioning and context_embedding is not None:
+            if n_actual > 0:
+                actual_embeddings = self._condition_node_embeddings(
+                    node_embeddings=actual_embeddings,
+                    context_embedding=context_embedding,
+                )
+                graph_embedding = self.graph_embedding_from_encoded(actual_embeddings)
+            graph_embedding = self._condition_graph_embedding(
+                graph_embedding=graph_embedding,
+                context_embedding=context_embedding,
+            )
 
         # Handle empty graph edge scoring
         if n_actual == 0 or adjacency.numel() == 0:
@@ -392,6 +442,7 @@ class GraphActionPredictor(nn.Module):
                 node_embeddings=actual_embeddings,
                 graph_embedding=graph_embedding,
                 prediction_context=prediction_context,
+                context_embedding=context_embedding,
             )
 
         create_valid_mask = adjacency == 0
@@ -410,11 +461,14 @@ class GraphActionPredictor(nn.Module):
 
         candidate_actions, candidate_scores = self._score_prediction_context_candidates(
             prediction_context=prediction_context,
+            temporal_graph=temporal_graph,
             node_order=node_order,
             create_scores=create_scores,
             relation_logits=relation_logits,
+            edge_features=edge_features,
             node_embeddings=actual_embeddings,
             graph_embedding=graph_embedding,
+            context_embedding=context_embedding,
         )
 
         count_logits = self.action_count_head(graph_embedding)
@@ -425,6 +479,11 @@ class GraphActionPredictor(nn.Module):
             candidate_count = min(len(candidate_actions), self.config.max_actions_per_step)
             if candidate_count > 1:
                 count_logits[candidate_count] = count_logits[candidate_count] + 0.5
+        action_type_context_logits = None
+        if self.config.use_context_conditioning and context_embedding is not None:
+            action_type_context_logits = self.action_context_head(
+                torch.cat([graph_embedding, context_embedding], dim=-1)
+            )
 
         return ActionScoreBundle(
             node_order=node_order,
@@ -440,6 +499,8 @@ class GraphActionPredictor(nn.Module):
             graph_embedding=graph_embedding,
             completion_scores=completion_scores,
             prediction_context=prediction_context,
+            context_embedding=context_embedding,
+            action_type_context_logits=action_type_context_logits,
             candidate_actions=candidate_actions,
             candidate_scores=candidate_scores,
         )
@@ -451,6 +512,7 @@ class GraphActionPredictor(nn.Module):
         node_embeddings: torch.Tensor,
         graph_embedding: torch.Tensor,
         prediction_context: GraphPredictionContext | None,
+        context_embedding: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if prediction_context is None or scores.numel() == 0:
             return scores
@@ -458,9 +520,8 @@ class GraphActionPredictor(nn.Module):
         if prediction_context.source_node_id in node_order:
             source_index = node_order.index(str(prediction_context.source_node_id))
             source_bias = torch.zeros_like(adjusted)
-            source_bias[source_index, :] = 2.0
+            source_bias[source_index, :] = self.config.context_source_bias_weight
             adjusted = adjusted + source_bias
-        context_embedding = self._context_text_embedding(prediction_context)
         if context_embedding is None or node_embeddings.numel() == 0:
             return adjusted
         normalized_nodes = F.normalize(node_embeddings, p=2, dim=-1, eps=1e-6)
@@ -477,6 +538,37 @@ class GraphActionPredictor(nn.Module):
             + 0.10 * graph_context_score
         )
 
+    def _condition_node_embeddings(
+        self,
+        node_embeddings: torch.Tensor,
+        context_embedding: torch.Tensor,
+    ) -> torch.Tensor:
+        if node_embeddings.numel() == 0:
+            return node_embeddings
+        expanded_context = context_embedding.unsqueeze(0).expand_as(node_embeddings)
+        fusion_features = torch.cat(
+            [
+                node_embeddings,
+                expanded_context,
+                node_embeddings * expanded_context,
+                torch.abs(node_embeddings - expanded_context),
+            ],
+            dim=-1,
+        )
+        gate = self.context_node_gate(fusion_features)
+        delta = self.context_node_fusion(fusion_features)
+        return node_embeddings + gate * delta
+
+    def _condition_graph_embedding(
+        self,
+        graph_embedding: torch.Tensor,
+        context_embedding: torch.Tensor,
+    ) -> torch.Tensor:
+        fusion_features = torch.cat([graph_embedding, context_embedding], dim=-1)
+        gate = self.context_graph_gate(fusion_features)
+        delta = self.context_graph_fusion(fusion_features)
+        return graph_embedding + gate * delta
+
     def _context_text_embedding(
         self,
         prediction_context: GraphPredictionContext | None,
@@ -491,11 +583,14 @@ class GraphActionPredictor(nn.Module):
     def _score_prediction_context_candidates(
         self,
         prediction_context: GraphPredictionContext | None,
+        temporal_graph: TemporalGraph,
         node_order: list[str],
         create_scores: torch.Tensor,
         relation_logits: torch.Tensor,
+        edge_features: torch.Tensor,
         node_embeddings: torch.Tensor,
         graph_embedding: torch.Tensor,
+        context_embedding: torch.Tensor | None,
     ) -> tuple[list[PredictedGraphAction] | None, torch.Tensor | None]:
         if (
             prediction_context is None
@@ -526,29 +621,45 @@ class GraphActionPredictor(nn.Module):
                 continue
             relation_idx = relation_index[action.relation_type]
             candidate_score = create_scores[row, col] + relation_logits[row, col, relation_idx]
-            candidate_score = candidate_score + self._candidate_text_score(
+            text_embedding = self._candidate_text_embedding(
                 action=action,
+                prediction_context=prediction_context,
+            )
+            candidate_score = candidate_score + self._candidate_text_score(
                 row=row,
                 col=col,
                 node_embeddings=node_embeddings,
                 graph_embedding=graph_embedding,
-                prediction_context=prediction_context,
+                text_embedding=text_embedding,
             )
+            if self.config.use_candidate_cross_encoder:
+                candidate_score = candidate_score + self._candidate_cross_encoder_score(
+                    action=action,
+                    row=row,
+                    col=col,
+                    relation_idx=relation_idx,
+                    edge_features=edge_features,
+                    node_embeddings=node_embeddings,
+                    graph_embedding=graph_embedding,
+                    context_embedding=context_embedding,
+                    text_embedding=text_embedding,
+                )
+            if self.config.use_structural_candidate_priors:
+                candidate_score = candidate_score + self._structural_candidate_bonus(
+                    action=action,
+                    temporal_graph=temporal_graph,
+                )
             scored_actions.append(action)
             scores.append(candidate_score)
         if not scores:
             return None, None
         return scored_actions, torch.stack(scores)
 
-    def _candidate_text_score(
+    def _candidate_text_embedding(
         self,
         action: PredictedGraphAction,
-        row: int,
-        col: int,
-        node_embeddings: torch.Tensor,
-        graph_embedding: torch.Tensor,
         prediction_context: GraphPredictionContext,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | None:
         text = "\n".join(
             part
             for part in (
@@ -558,14 +669,94 @@ class GraphActionPredictor(nn.Module):
             )
             if part.strip()
         )
-        if not text.strip() or node_embeddings.numel() == 0:
+        if not text.strip():
+            return None
+        return self.node_feature_encoder.text_encoder(text, device=self.device)
+
+    def _candidate_text_score(
+        self,
+        row: int,
+        col: int,
+        node_embeddings: torch.Tensor,
+        graph_embedding: torch.Tensor,
+        text_embedding: torch.Tensor | None,
+    ) -> torch.Tensor:
+        if text_embedding is None or node_embeddings.numel() == 0:
             return graph_embedding.new_tensor(0.0)
-        text_embedding = self.node_feature_encoder.text_encoder(text, device=self.device)
         pair_embedding = node_embeddings[row] + node_embeddings[col] + graph_embedding
-        return 0.35 * torch.dot(
+        return self.config.candidate_text_score_weight * torch.dot(
             F.normalize(pair_embedding, p=2, dim=0, eps=1e-6),
             F.normalize(text_embedding, p=2, dim=0, eps=1e-6),
         )
+
+    def _candidate_cross_encoder_score(
+        self,
+        action: PredictedGraphAction,
+        row: int,
+        col: int,
+        relation_idx: int,
+        edge_features: torch.Tensor,
+        node_embeddings: torch.Tensor,
+        graph_embedding: torch.Tensor,
+        context_embedding: torch.Tensor | None,
+        text_embedding: torch.Tensor | None,
+    ) -> torch.Tensor:
+        if node_embeddings.numel() == 0:
+            return graph_embedding.new_tensor(0.0)
+        zero = graph_embedding.new_zeros(self.config.hidden_dim)
+        source_embedding = node_embeddings[row]
+        target_embedding = node_embeddings[col]
+        context_vector = context_embedding if context_embedding is not None else zero
+        text_vector = text_embedding if text_embedding is not None else zero
+        relation_vector = self.relation_hidden_embedding(
+            torch.tensor(relation_idx, dtype=torch.long, device=self.device)
+        )
+        edge_vector = self.candidate_edge_projection(edge_features[row, col])
+        candidate_features = torch.cat(
+            [
+                source_embedding,
+                target_embedding,
+                graph_embedding,
+                context_vector,
+                text_vector,
+                relation_vector,
+                source_embedding * target_embedding,
+                torch.abs(source_embedding - target_embedding),
+                edge_vector,
+            ],
+            dim=-1,
+        )
+        return self.candidate_cross_encoder(candidate_features).view(())
+
+    def _structural_candidate_bonus(
+        self,
+        action: PredictedGraphAction,
+        temporal_graph: TemporalGraph,
+    ) -> torch.Tensor:
+        device_value = self.empty_graph_embedding.new_tensor(0.0)
+        if action.source_node_id is None or action.target_node_id is None:
+            return device_value
+        key = (action.source_node_id, action.target_node_id)
+        bonus = 0.0
+        if key in temporal_graph.structural_edges:
+            bonus += 0.25
+        metadata_items = temporal_graph.structural_edge_metadata.get(key, [])
+        action_relation = str(action.relation_type or "").strip().lower()
+        action_transition = str(action.metadata.get("transition_id", "")).strip()
+        action_description = str(action.metadata.get("description", "")).strip().lower()
+        for item in metadata_items:
+            relation = str(item.get("relation_type", "")).strip().lower()
+            transition_id = str(item.get("transition_id", "")).strip()
+            description = str(item.get("description", "")).strip().lower()
+            if action_relation and relation == action_relation:
+                bonus += 0.50
+            if action_transition and transition_id == action_transition:
+                bonus += 0.35
+            if action_description and description and (
+                action_description in description or description in action_description
+            ):
+                bonus += 0.20
+        return device_value + self.config.candidate_structural_prior_weight * bonus
 
     def action_type_logits(self, score_bundle: ActionScoreBundle) -> torch.Tensor:
         create_logit = self._pooled_edge_logit(
@@ -575,9 +766,10 @@ class GraphActionPredictor(nn.Module):
         if score_bundle.candidate_scores is not None and score_bundle.candidate_scores.numel() > 0:
             create_logit = torch.logaddexp(
                 create_logit,
-                torch.logsumexp(score_bundle.candidate_scores, dim=0) + 1.5,
+                torch.logsumexp(score_bundle.candidate_scores, dim=0)
+                + self.config.candidate_action_type_boost,
             )
-        return torch.stack(
+        logits = torch.stack(
             [
                 create_logit,
                 self._pooled_edge_logit(score_bundle.remove_scores, score_bundle.remove_valid_mask),
@@ -585,6 +777,9 @@ class GraphActionPredictor(nn.Module):
                 score_bundle.no_op_logit,
             ]
         )
+        if score_bundle.action_type_context_logits is not None:
+            logits = logits + score_bundle.action_type_context_logits
+        return logits
 
     def predict_rollout(
         self,

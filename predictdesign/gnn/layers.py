@@ -318,6 +318,63 @@ class RelationalAttentionLayer(nn.Module):
         return x
 
 
+class HybridGraphLayer(nn.Module):
+    """Fuse local, sampled-neighbor, attention, and relational views in one block."""
+
+    def __init__(
+        self,
+        hidden_dim: int,
+        edge_feature_dim: int,
+        num_heads: int = 4,
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
+        self.gcn = DenseGCNLayer(hidden_dim, hidden_dim, edge_feature_dim=edge_feature_dim)
+        self.graphsage = DenseGraphSAGELayer(hidden_dim, hidden_dim, edge_feature_dim=edge_feature_dim)
+        self.gat = DenseGATLayer(hidden_dim, hidden_dim, edge_feature_dim=edge_feature_dim)
+        self.relational = RelationalAttentionLayer(
+            hidden_dim=hidden_dim,
+            edge_feature_dim=edge_feature_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+        )
+        self.fusion_norm = RMSNorm(hidden_dim * 4)
+        self.fusion = nn.Sequential(
+            nn.Linear(hidden_dim * 4, hidden_dim * 2),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim * 2, hidden_dim),
+        )
+        self.gate = nn.Sequential(
+            nn.Linear(hidden_dim * 5, hidden_dim),
+            nn.Sigmoid(),
+        )
+        self.output_norm = RMSNorm(hidden_dim)
+
+    def forward(
+        self,
+        features: torch.Tensor,
+        adjacency: torch.Tensor,
+        edge_features: torch.Tensor,
+        role_indices: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if features.size(0) == 0:
+            return features
+        gcn_out = self.gcn(features, adjacency, edge_features)
+        sage_out = self.graphsage(features, adjacency, edge_features)
+        gat_out = self.gat(features, adjacency, edge_features)
+        relational_out = self.relational(
+            features,
+            adjacency,
+            edge_features,
+            role_indices=role_indices,
+        )
+        views = torch.cat([gcn_out, sage_out, gat_out, relational_out], dim=-1)
+        fused = self.fusion(self.fusion_norm(views))
+        gate = self.gate(torch.cat([features, views], dim=-1))
+        return self.output_norm(features + gate * fused)
+
+
 class GNNBackbone(nn.Module):
     def __init__(
         self,
@@ -349,6 +406,15 @@ class GNNBackbone(nn.Module):
                         dropout=dropout,
                     )
                 )
+            elif layer_type == "hybrid":
+                layers.append(
+                    HybridGraphLayer(
+                        hidden_dim=hidden_dim,
+                        edge_feature_dim=edge_feature_dim,
+                        num_heads=num_heads,
+                        dropout=dropout,
+                    )
+                )
             else:
                 raise ValueError(f"Unsupported layer_type: {layer_type}")
         self.layers = nn.ModuleList(layers)
@@ -362,7 +428,7 @@ class GNNBackbone(nn.Module):
     ) -> torch.Tensor:
         hidden = features
         for layer in self.layers:
-            if self.layer_type == "relational_transformer":
+            if self.layer_type in {"relational_transformer", "hybrid"}:
                 hidden = layer(hidden, adjacency, edge_features, role_indices=role_indices)
             else:
                 hidden = layer(hidden, adjacency, edge_features)

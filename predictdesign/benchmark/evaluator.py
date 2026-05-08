@@ -156,7 +156,7 @@ class BenchmarkEvaluator:
         self,
         message_reduce_modes: tuple[str, ...] = ("attention",),
         state_updaters: tuple[str, ...] = ("gru", "mdp"),
-        gnn_types: tuple[str, ...] = ("gcn", "graphsage", "gat"),
+        gnn_types: tuple[str, ...] = ("hybrid", "relational_transformer", "gcn", "graphsage", "gat"),
     ) -> list[CombinationSpec]:
         specs: list[CombinationSpec] = []
         for gnn_type in gnn_types:
@@ -225,7 +225,7 @@ class BenchmarkEvaluator:
         episodes: list[BenchmarkEpisode],
         message_reduce_modes: tuple[str, ...] = ("attention",),
         state_updaters: tuple[str, ...] = ("gru", "mdp"),
-        gnn_types: tuple[str, ...] = ("gcn", "graphsage", "gat"),
+        gnn_types: tuple[str, ...] = ("hybrid", "relational_transformer", "gcn", "graphsage", "gat"),
         split_strategy: str = "holdout",
         train_episodes: list[BenchmarkEpisode] | None = None,
         eval_episodes: list[BenchmarkEpisode] | None = None,

@@ -1,5 +1,5 @@
 from .cold_start import ColdStartInitializer
-from .layers import GNNBackbone, RelationalAttentionLayer, RMSNorm, GatedMLP
+from .layers import GNNBackbone, HybridGraphLayer, RelationalAttentionLayer, RMSNorm, GatedMLP
 from .predictor import GraphActionPredictor
 
 __all__ = [
@@ -7,6 +7,7 @@ __all__ = [
     "GatedMLP",
     "GNNBackbone",
     "GraphActionPredictor",
+    "HybridGraphLayer",
     "RMSNorm",
     "RelationalAttentionLayer",
 ]

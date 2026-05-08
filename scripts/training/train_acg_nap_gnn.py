@@ -50,7 +50,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--message-reduce-modes", nargs="*", default=["attention"])
     parser.add_argument("--state-updaters", nargs="*", default=["gru"])
-    parser.add_argument("--gnn-types", nargs="*", default=["gcn"])
+    parser.add_argument("--gnn-types", nargs="*", default=["hybrid"])
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument(
         "--sentence-transformer-path",

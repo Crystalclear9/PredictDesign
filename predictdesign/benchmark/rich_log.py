@@ -738,6 +738,8 @@ def _build_text_embedding_cache(
     unique_texts = list(dict.fromkeys(texts))
     if not unique_texts:
         return {"": torch.zeros(fallback_dim, dtype=torch.float32)}, fallback_dim, "fallback_hash"
+    if _should_use_hash_text_encoder(sentence_transformer_model):
+        return _build_hash_text_embedding_cache(unique_texts, fallback_dim)
     try:
         from sentence_transformers import SentenceTransformer
 
@@ -759,11 +761,29 @@ def _build_text_embedding_cache(
         if device.type == "cuda":
             torch.cuda.empty_cache()
         return cache, text_dim, sentence_transformer_model
-    except (ImportError, OSError, RuntimeError):
-        cache = {"": torch.zeros(fallback_dim, dtype=torch.float32)}
-        for text in unique_texts:
-            cache[text] = _hash_text(text, fallback_dim)
-        return cache, fallback_dim, f"fallback_hash_{fallback_dim}"
+    except Exception:
+        return _build_hash_text_embedding_cache(unique_texts, fallback_dim)
+
+
+def _should_use_hash_text_encoder(model_name_or_path: str) -> bool:
+    normalized = str(model_name_or_path or "").strip()
+    if not normalized:
+        return True
+    return (
+        normalized.startswith("__missing_")
+        or normalized.startswith("__fallback_")
+        or normalized.startswith("fallback_hash")
+    )
+
+
+def _build_hash_text_embedding_cache(
+    unique_texts: list[str],
+    fallback_dim: int,
+) -> tuple[dict[str, torch.Tensor], int, str]:
+    cache = {"": torch.zeros(fallback_dim, dtype=torch.float32)}
+    for text in unique_texts:
+        cache[text] = _hash_text(text, fallback_dim)
+    return cache, fallback_dim, f"fallback_hash_{fallback_dim}"
 
 
 def _node_embedding_text(node: dict[str, Any]) -> str:

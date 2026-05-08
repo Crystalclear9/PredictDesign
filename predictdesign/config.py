@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 @dataclass(slots=True)
 class LLMApiConfig:
-    api_key: str = "sk-ucnvgmqkwumgbwibyfexhmqznzgtqdlskstgexnfwbvntheu"
+    api_key: str = ""
     base_url: str = "https://api.siliconflow.cn/v1"
     model: str = "Qwen/Qwen2.5-Coder-32B-Instruct"
     temperature: float = 0.1
@@ -50,6 +50,14 @@ class ExperimentConfig:
     sentence_transformer_freeze: bool = True
     # Cold start
     use_cold_start: bool = True
+    # Strong predictor features
+    use_context_conditioning: bool = True
+    use_candidate_cross_encoder: bool = True
+    use_structural_candidate_priors: bool = True
+    context_source_bias_weight: float = 2.0
+    candidate_text_score_weight: float = 0.35
+    candidate_structural_prior_weight: float = 0.75
+    candidate_action_type_boost: float = 1.5
     # Completion detection
     use_completion_detection: bool = True
     completion_threshold: float = 0.5
@@ -111,9 +119,9 @@ class ExperimentConfig:
             raise ValueError("aggregator_dropout must be in [0, 1).")
         if self.state_updater_type not in {"gru", "mdp"}:
             raise ValueError("state_updater_type must be 'gru' or 'mdp'.")
-        if self.gnn_type not in {"gcn", "graphsage", "gat", "relational_transformer", "llm_api"}:
+        if self.gnn_type not in {"gcn", "graphsage", "gat", "relational_transformer", "hybrid", "llm_api"}:
             raise ValueError(
-                "gnn_type must be one of: gcn, graphsage, gat, relational_transformer, llm_api."
+                "gnn_type must be one of: gcn, graphsage, gat, relational_transformer, hybrid, llm_api."
             )
         if self.predictor_backend not in {"gnn", "llm_api"}:
             raise ValueError("predictor_backend must be 'gnn' or 'llm_api'.")
@@ -123,8 +131,18 @@ class ExperimentConfig:
             raise ValueError("candidate_relation_types must not be empty.")
         if self.rt_num_heads <= 0:
             raise ValueError("rt_num_heads must be positive.")
+        if self.gnn_type in {"relational_transformer", "hybrid"} and self.hidden_dim % self.rt_num_heads != 0:
+            raise ValueError("hidden_dim must be divisible by rt_num_heads for relational_transformer or hybrid.")
         if self.rt_dropout < 0 or self.rt_dropout >= 1:
             raise ValueError("rt_dropout must be in [0, 1).")
+        if self.context_source_bias_weight < 0:
+            raise ValueError("context_source_bias_weight must be non-negative.")
+        if self.candidate_text_score_weight < 0:
+            raise ValueError("candidate_text_score_weight must be non-negative.")
+        if self.candidate_structural_prior_weight < 0:
+            raise ValueError("candidate_structural_prior_weight must be non-negative.")
+        if self.candidate_action_type_boost < 0:
+            raise ValueError("candidate_action_type_boost must be non-negative.")
         if self.training_node_feature_dropout < 0 or self.training_node_feature_dropout >= 1:
             raise ValueError("training_node_feature_dropout must be in [0, 1).")
         if self.training_edge_feature_dropout < 0 or self.training_edge_feature_dropout >= 1:
