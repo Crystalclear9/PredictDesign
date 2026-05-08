@@ -11,6 +11,7 @@ from ..config import ExperimentConfig
 from ..experiment import PredictDesignSystem
 from ..messages import Message, MessageAction
 from ..prediction import GraphActionType, GraphPredictionContext, PredictedGraphAction
+from ..temporal_graph import TemporalEdge, TemporalGraph, TemporalNode
 from .types import BenchmarkEpisode, EpisodeStep
 
 RolloutTarget = tuple[float, list[PredictedGraphAction], GraphPredictionContext | None]
@@ -51,6 +52,182 @@ class TrainingSummary:
     eval_episode_count: int
 
 
+def bootstrap_few_shot_transition_memory(
+    system: PredictDesignSystem,
+    episodes: list[BenchmarkEpisode],
+    config: ExperimentConfig | None = None,
+) -> int:
+    """Build non-parametric transition memory from labeled episodes."""
+    cfg = config or system.config
+    predictor = system.predictor
+    if not cfg.use_few_shot_transition_memory:
+        if hasattr(predictor, "reset_few_shot_memory"):
+            predictor.reset_few_shot_memory()
+        return 0
+    if not (
+        hasattr(predictor, "reset_few_shot_memory")
+        and hasattr(predictor, "add_few_shot_transition")
+    ):
+        return 0
+    predictor.reset_few_shot_memory()
+    for episode in episodes:
+        graph = _build_memory_graph(system, episode, cfg)
+        for step in episode.steps:
+            _apply_memory_context_updates(graph, step)
+            for action in _positive_transition_actions(step):
+                if action.action_type != GraphActionType.CREATE_EDGE:
+                    continue
+                if action.source_node_id not in graph.nodes or action.target_node_id not in graph.nodes:
+                    continue
+                source = graph.nodes[action.source_node_id]
+                target = graph.nodes[action.target_node_id]
+                predictor.add_few_shot_transition(
+                    source_role=source.role,
+                    target_role=target.role,
+                    relation_type=str(action.relation_type or ""),
+                    text=_transition_memory_text(episode=episode, step=step, action=action, graph=graph),
+                )
+            for action in step.observed_actions:
+                _apply_action_to_memory_graph(graph, action, cfg)
+    if hasattr(predictor, "few_shot_memory_size"):
+        return int(predictor.few_shot_memory_size())
+    return 0
+
+
+def _build_memory_graph(
+    system: PredictDesignSystem,
+    episode: BenchmarkEpisode,
+    config: ExperimentConfig,
+) -> TemporalGraph:
+    graph = TemporalGraph(context_dim=config.context_dim, device=system.device)
+    graph.graph_context_text = str(episode.initial_graph_context_text or "")
+    for node in episode.initial_nodes:
+        graph.add_node(node)
+    for edge in episode.initial_edges:
+        if edge.source_node_id in graph.nodes and edge.target_node_id in graph.nodes:
+            graph.add_edge(edge)
+    edge_metadata = episode.initial_structural_edge_metadata or {}
+    for source_node_id, target_node_id in episode.initial_structural_edges:
+        if source_node_id not in graph.nodes or target_node_id not in graph.nodes:
+            continue
+        graph.add_structural_edge(source_node_id, target_node_id)
+        metadata_items = edge_metadata.get((source_node_id, target_node_id), [])
+        if metadata_items:
+            graph.structural_edge_metadata[(source_node_id, target_node_id)] = [
+                dict(item) for item in metadata_items
+            ]
+    return graph
+
+
+def _apply_memory_context_updates(graph: TemporalGraph, step: EpisodeStep) -> None:
+    for node_id, context in step.context_updates.items():
+        if node_id in graph.nodes:
+            graph.update_node_context(
+                node_id,
+                context,
+                context_text=step.context_text_updates.get(node_id),
+            )
+
+
+def _positive_transition_actions(step: EpisodeStep) -> list[PredictedGraphAction]:
+    actions: list[PredictedGraphAction] = []
+    seen: set[tuple[str, str | None, str | None, str | None, str | None, str | None]] = set()
+    for action in [*step.supervision_actions, *step.observed_actions, step.ground_truth_action]:
+        key = (
+            action.action_type.value,
+            action.source_node_id,
+            action.target_node_id,
+            action.relation_type,
+            action.role,
+            action.new_node_id,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        actions.append(action)
+    return actions
+
+
+def _transition_memory_text(
+    *,
+    episode: BenchmarkEpisode,
+    step: EpisodeStep,
+    action: PredictedGraphAction,
+    graph: TemporalGraph,
+) -> str:
+    context = step.prediction_context.combined_text() if step.prediction_context else ""
+    source_text = _node_memory_text(graph, action.source_node_id)
+    target_text = _node_memory_text(graph, action.target_node_id)
+    metadata_text = " ".join(
+        str(action.metadata.get(key, "")).strip()
+        for key in ("transition_id", "description", "label", "name")
+        if str(action.metadata.get(key, "")).strip()
+    )
+    message_text = " ".join(
+        str(message.metadata.get(key, "")).strip()
+        for message in step.messages
+        for key in ("query", "text", "content", "description", "output")
+        if str(message.metadata.get(key, "")).strip()
+    )
+    return "\n".join(
+        part
+        for part in (
+            episode.dataset_name,
+            episode.initial_graph_context_text,
+            context,
+            str(action.relation_type or ""),
+            metadata_text,
+            message_text,
+            source_text,
+            target_text,
+        )
+        if str(part).strip()
+    )
+
+
+def _node_memory_text(graph: TemporalGraph, node_id: str | None) -> str:
+    if node_id is None or node_id not in graph.nodes:
+        return ""
+    node = graph.nodes[node_id]
+    return f"{node.node_id} {node.role} {node.context_text}"
+
+
+def _apply_action_to_memory_graph(
+    graph: TemporalGraph,
+    action: PredictedGraphAction,
+    config: ExperimentConfig,
+) -> None:
+    if action.action_type == GraphActionType.CREATE_EDGE:
+        if action.source_node_id is None or action.target_node_id is None:
+            return
+        if action.source_node_id not in graph.nodes or action.target_node_id not in graph.nodes:
+            return
+        if not graph.has_active_edge(action.source_node_id, action.target_node_id, action.effective_time):
+            graph.add_edge(
+                TemporalEdge(
+                    source_node_id=action.source_node_id,
+                    target_node_id=action.target_node_id,
+                    start_time=action.effective_time,
+                )
+            )
+    elif action.action_type == GraphActionType.REMOVE_EDGE:
+        if action.source_node_id and action.target_node_id:
+            graph.deactivate_edge(action.source_node_id, action.target_node_id, action.effective_time)
+    elif action.action_type == GraphActionType.ADD_NODE:
+        role = action.role or "new_role"
+        node_id = action.new_node_id or graph.generate_node_id(role)
+        if node_id not in graph.nodes:
+            graph.add_node(
+                TemporalNode.build(
+                    node_id=node_id,
+                    role=role,
+                    context=None,
+                    context_dim=config.context_dim,
+                    device=graph.device,
+                )
+            )
+
+
 class BenchmarkTrainer:
     def __init__(
         self,
@@ -89,11 +266,29 @@ class BenchmarkTrainer:
         config: ExperimentConfig | None = None,
         eval_episodes: list[BenchmarkEpisode] | None = None,
     ) -> None:
-        if not episodes or self.epochs <= 0:
+        cfg = config or system.config
+        if episodes:
+            bootstrap_few_shot_transition_memory(system, episodes, cfg)
+        if not episodes:
+            return
+        if self.epochs <= 0:
+            self.last_fit_summary = TrainingSummary(
+                epochs_completed=0,
+                best_eval_accuracy=0.0,
+                last_epoch_loss=0.0,
+                train_episode_count=len(episodes),
+                eval_episode_count=len(eval_episodes or []),
+            )
             return
         if not getattr(system.predictor, "supports_gradient_training", True):
+            self.last_fit_summary = TrainingSummary(
+                epochs_completed=0,
+                best_eval_accuracy=0.0,
+                last_epoch_loss=0.0,
+                train_episode_count=len(episodes),
+                eval_episode_count=len(eval_episodes or []),
+            )
             return
-        cfg = config or system.config
         torch.manual_seed(self.seed)
         optimizer = torch.optim.AdamW(
             system.parameters(),

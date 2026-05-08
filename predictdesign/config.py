@@ -54,10 +54,17 @@ class ExperimentConfig:
     use_context_conditioning: bool = True
     use_candidate_cross_encoder: bool = True
     use_structural_candidate_priors: bool = True
+    use_zero_shot_action_priors: bool = True
+    use_few_shot_transition_memory: bool = True
     context_source_bias_weight: float = 2.0
     candidate_text_score_weight: float = 0.35
     candidate_structural_prior_weight: float = 0.75
     candidate_action_type_boost: float = 1.5
+    zero_shot_prior_weight: float = 1.5
+    zero_shot_action_type_boost: float = 1.0
+    learned_candidate_score_weight: float = 1.0
+    few_shot_memory_weight: float = 1.25
+    few_shot_memory_max_examples: int = 512
     # Completion detection
     use_completion_detection: bool = True
     completion_threshold: float = 0.5
@@ -143,6 +150,16 @@ class ExperimentConfig:
             raise ValueError("candidate_structural_prior_weight must be non-negative.")
         if self.candidate_action_type_boost < 0:
             raise ValueError("candidate_action_type_boost must be non-negative.")
+        if self.zero_shot_prior_weight < 0:
+            raise ValueError("zero_shot_prior_weight must be non-negative.")
+        if self.zero_shot_action_type_boost < 0:
+            raise ValueError("zero_shot_action_type_boost must be non-negative.")
+        if self.learned_candidate_score_weight < 0:
+            raise ValueError("learned_candidate_score_weight must be non-negative.")
+        if self.few_shot_memory_weight < 0:
+            raise ValueError("few_shot_memory_weight must be non-negative.")
+        if self.few_shot_memory_max_examples <= 0:
+            raise ValueError("few_shot_memory_max_examples must be positive.")
         if self.training_node_feature_dropout < 0 or self.training_node_feature_dropout >= 1:
             raise ValueError("training_node_feature_dropout must be in [0, 1).")
         if self.training_edge_feature_dropout < 0 or self.training_edge_feature_dropout >= 1:

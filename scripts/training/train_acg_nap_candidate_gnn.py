@@ -22,7 +22,7 @@ from predictdesign import (
     load_acg_nap_candidate_corpus,
 )
 from predictdesign.paths import ACG_NAP_ROOT, RESULTS_ROOT
-from predictdesign.benchmark.trainer import BenchmarkTrainer
+from predictdesign.benchmark.trainer import BenchmarkTrainer, bootstrap_few_shot_transition_memory
 
 
 def _multi_target_log_loss(logits: torch.Tensor, target_indices: list[int]) -> torch.Tensor:
@@ -63,6 +63,8 @@ class ACGNapCandidateTrainer:
         self.hit_k_values = hit_k_values
 
     def fit(self, system: PredictDesignSystem, episodes) -> None:
+        if episodes:
+            bootstrap_few_shot_transition_memory(system, episodes)
         if not episodes or self.epochs <= 0:
             return
         torch.manual_seed(self.seed)

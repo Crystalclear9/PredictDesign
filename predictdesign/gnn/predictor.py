@@ -22,6 +22,8 @@ from ..prediction import (
 from ..temporal_graph import TemporalEdge, TemporalGraph, TemporalNode
 from ..types import ensure_tensor
 from .cold_start import ColdStartInitializer
+from .cold_start_prior import ColdStartActionPriorScorer
+from .few_shot_memory import FewShotTransitionMemory
 from .layers import GNNBackbone
 
 
@@ -44,6 +46,8 @@ class ActionScoreBundle:
     action_type_context_logits: torch.Tensor | None = None
     candidate_actions: list[PredictedGraphAction] | None = None
     candidate_scores: torch.Tensor | None = None
+    candidate_prior_scores: torch.Tensor | None = None
+    candidate_few_shot_scores: torch.Tensor | None = None
 
 
 class GraphActionPredictor(nn.Module):
@@ -54,6 +58,10 @@ class GraphActionPredictor(nn.Module):
         self.config = config
         self.device = torch.device(config.device)
         self.node_feature_encoder = node_feature_encoder
+        self.cold_start_prior_scorer = ColdStartActionPriorScorer()
+        self.few_shot_memory = FewShotTransitionMemory(
+            max_examples=config.few_shot_memory_max_examples,
+        )
         self.node_feature_dropout = nn.Dropout(config.training_node_feature_dropout)
         self.edge_feature_dropout = nn.Dropout(config.training_edge_feature_dropout)
         self.edge_mask_rate = config.training_edge_mask_rate
@@ -172,6 +180,27 @@ class GraphActionPredictor(nn.Module):
                 role_to_idx[role] = len(role_to_idx)
             indices.append(role_to_idx[role])
         return torch.tensor(indices, dtype=torch.long, device=self.device)
+
+    def reset_few_shot_memory(self) -> None:
+        self.few_shot_memory.clear()
+
+    def add_few_shot_transition(
+        self,
+        *,
+        source_role: str,
+        target_role: str,
+        relation_type: str,
+        text: str,
+    ) -> None:
+        self.few_shot_memory.add(
+            source_role=source_role,
+            target_role=target_role,
+            relation_type=relation_type,
+            text=text,
+        )
+
+    def few_shot_memory_size(self) -> int:
+        return len(self.few_shot_memory)
 
     def initialize_ctdg_states(
         self,
@@ -444,6 +473,12 @@ class GraphActionPredictor(nn.Module):
                 prediction_context=prediction_context,
                 context_embedding=context_embedding,
             )
+            create_scores = self._apply_zero_shot_create_priors(
+                scores=create_scores,
+                temporal_graph=temporal_graph,
+                prediction_context=prediction_context,
+                node_order=node_order,
+            )
 
         create_valid_mask = adjacency == 0
         remove_valid_mask = adjacency > 0
@@ -459,7 +494,12 @@ class GraphActionPredictor(nn.Module):
         if self.completion_classifier is not None and n_actual > 0:
             completion_scores = self.completion_classifier(actual_embeddings)  # [N]
 
-        candidate_actions, candidate_scores = self._score_prediction_context_candidates(
+        (
+            candidate_actions,
+            candidate_scores,
+            candidate_prior_scores,
+            candidate_few_shot_scores,
+        ) = self._score_prediction_context_candidates(
             prediction_context=prediction_context,
             temporal_graph=temporal_graph,
             node_order=node_order,
@@ -503,6 +543,8 @@ class GraphActionPredictor(nn.Module):
             action_type_context_logits=action_type_context_logits,
             candidate_actions=candidate_actions,
             candidate_scores=candidate_scores,
+            candidate_prior_scores=candidate_prior_scores,
+            candidate_few_shot_scores=candidate_few_shot_scores,
         )
 
     def _apply_prediction_context_bias(
@@ -569,6 +611,42 @@ class GraphActionPredictor(nn.Module):
         delta = self.context_graph_fusion(fusion_features)
         return graph_embedding + gate * delta
 
+    def _apply_zero_shot_create_priors(
+        self,
+        scores: torch.Tensor,
+        temporal_graph: TemporalGraph,
+        prediction_context: GraphPredictionContext | None,
+        node_order: list[str],
+    ) -> torch.Tensor:
+        if scores.numel() == 0 or (
+            prediction_context is not None and prediction_context.candidate_actions
+        ):
+            return scores
+        adjusted = scores
+        if (
+            self.config.use_zero_shot_action_priors
+            and prediction_context is not None
+            and self.config.zero_shot_prior_weight > 0
+        ):
+            prior_matrix = self.cold_start_prior_scorer.edge_prior_matrix(
+                temporal_graph=temporal_graph,
+                prediction_context=prediction_context,
+                node_order=node_order,
+                device=scores.device,
+                dtype=scores.dtype,
+            )
+            adjusted = adjusted + self.config.zero_shot_prior_weight * prior_matrix
+        if self._uses_few_shot_memory() and self.config.few_shot_memory_weight > 0:
+            memory_matrix = self.few_shot_memory.edge_prior_matrix(
+                temporal_graph=temporal_graph,
+                prediction_context=prediction_context,
+                node_order=node_order,
+                device=scores.device,
+                dtype=scores.dtype,
+            )
+            adjusted = adjusted + self.config.few_shot_memory_weight * memory_matrix
+        return adjusted
+
     def _context_text_embedding(
         self,
         prediction_context: GraphPredictionContext | None,
@@ -591,19 +669,26 @@ class GraphActionPredictor(nn.Module):
         node_embeddings: torch.Tensor,
         graph_embedding: torch.Tensor,
         context_embedding: torch.Tensor | None,
-    ) -> tuple[list[PredictedGraphAction] | None, torch.Tensor | None]:
+    ) -> tuple[
+        list[PredictedGraphAction] | None,
+        torch.Tensor | None,
+        torch.Tensor | None,
+        torch.Tensor | None,
+    ]:
         if (
             prediction_context is None
             or not prediction_context.candidate_actions
             or create_scores.numel() == 0
         ):
-            return None, None
+            return None, None, None, None
         relation_index = {
             relation_type: index
             for index, relation_type in enumerate(self.config.candidate_relation_types)
         }
         scored_actions: list[PredictedGraphAction] = []
         scores: list[torch.Tensor] = []
+        prior_scores: list[torch.Tensor] = []
+        few_shot_scores: list[torch.Tensor] = []
         for action in prediction_context.candidate_actions:
             if action.action_type != GraphActionType.CREATE_EDGE:
                 continue
@@ -620,12 +705,12 @@ class GraphActionPredictor(nn.Module):
             if not self.config.allow_self_loop_prediction and row == col:
                 continue
             relation_idx = relation_index[action.relation_type]
-            candidate_score = create_scores[row, col] + relation_logits[row, col, relation_idx]
+            learned_score = create_scores[row, col] + relation_logits[row, col, relation_idx]
             text_embedding = self._candidate_text_embedding(
                 action=action,
                 prediction_context=prediction_context,
             )
-            candidate_score = candidate_score + self._candidate_text_score(
+            learned_score = learned_score + self._candidate_text_score(
                 row=row,
                 col=col,
                 node_embeddings=node_embeddings,
@@ -633,7 +718,7 @@ class GraphActionPredictor(nn.Module):
                 text_embedding=text_embedding,
             )
             if self.config.use_candidate_cross_encoder:
-                candidate_score = candidate_score + self._candidate_cross_encoder_score(
+                learned_score = learned_score + self._candidate_cross_encoder_score(
                     action=action,
                     row=row,
                     col=col,
@@ -645,15 +730,75 @@ class GraphActionPredictor(nn.Module):
                     text_embedding=text_embedding,
                 )
             if self.config.use_structural_candidate_priors:
-                candidate_score = candidate_score + self._structural_candidate_bonus(
+                learned_score = learned_score + self._structural_candidate_bonus(
                     action=action,
                     temporal_graph=temporal_graph,
                 )
+            candidate_score = self.config.learned_candidate_score_weight * learned_score
+            prior_score = self._zero_shot_candidate_prior_score(
+                action=action,
+                temporal_graph=temporal_graph,
+                prediction_context=prediction_context,
+                graph_embedding=graph_embedding,
+            )
+            candidate_score = candidate_score + self.config.zero_shot_prior_weight * prior_score
+            few_shot_score = self._few_shot_candidate_score(
+                action=action,
+                temporal_graph=temporal_graph,
+                prediction_context=prediction_context,
+                graph_embedding=graph_embedding,
+            )
+            candidate_score = candidate_score + self.config.few_shot_memory_weight * few_shot_score
             scored_actions.append(action)
             scores.append(candidate_score)
+            prior_scores.append(prior_score)
+            few_shot_scores.append(few_shot_score)
         if not scores:
-            return None, None
-        return scored_actions, torch.stack(scores)
+            return None, None, None, None
+        return (
+            scored_actions,
+            torch.stack(scores),
+            torch.stack(prior_scores),
+            torch.stack(few_shot_scores),
+        )
+
+    def _zero_shot_candidate_prior_score(
+        self,
+        action: PredictedGraphAction,
+        temporal_graph: TemporalGraph,
+        prediction_context: GraphPredictionContext | None,
+        graph_embedding: torch.Tensor,
+    ) -> torch.Tensor:
+        if not self.config.use_zero_shot_action_priors:
+            return graph_embedding.new_tensor(0.0)
+        score = self.cold_start_prior_scorer.candidate_score(
+            action=action,
+            temporal_graph=temporal_graph,
+            prediction_context=prediction_context,
+        )
+        return graph_embedding.new_tensor(float(score))
+
+    def _few_shot_candidate_score(
+        self,
+        action: PredictedGraphAction,
+        temporal_graph: TemporalGraph,
+        prediction_context: GraphPredictionContext | None,
+        graph_embedding: torch.Tensor,
+    ) -> torch.Tensor:
+        if not self._uses_few_shot_memory():
+            return graph_embedding.new_tensor(0.0)
+        score = self.few_shot_memory.candidate_score(
+            action=action,
+            temporal_graph=temporal_graph,
+            prediction_context=prediction_context,
+        )
+        return graph_embedding.new_tensor(float(score))
+
+    def _uses_few_shot_memory(self) -> bool:
+        return (
+            self.config.use_few_shot_transition_memory
+            and len(self.few_shot_memory) > 0
+        )
 
     def _candidate_text_embedding(
         self,
@@ -769,6 +914,8 @@ class GraphActionPredictor(nn.Module):
                 torch.logsumexp(score_bundle.candidate_scores, dim=0)
                 + self.config.candidate_action_type_boost,
             )
+        if self._has_cold_start_create_signal(score_bundle):
+            create_logit = create_logit + self.config.zero_shot_action_type_boost
         logits = torch.stack(
             [
                 create_logit,
@@ -780,6 +927,24 @@ class GraphActionPredictor(nn.Module):
         if score_bundle.action_type_context_logits is not None:
             logits = logits + score_bundle.action_type_context_logits
         return logits
+
+    def _has_cold_start_create_signal(self, score_bundle: ActionScoreBundle) -> bool:
+        if self.config.zero_shot_action_type_boost <= 0:
+            return False
+        if score_bundle.candidate_prior_scores is not None and score_bundle.candidate_prior_scores.numel() > 0:
+            if bool((score_bundle.candidate_prior_scores > 0).any().item()):
+                return True
+        if (
+            score_bundle.candidate_few_shot_scores is not None
+            and score_bundle.candidate_few_shot_scores.numel() > 0
+        ):
+            if bool((score_bundle.candidate_few_shot_scores > 0).any().item()):
+                return True
+        return (
+            self.config.use_zero_shot_action_priors
+            and score_bundle.prediction_context is not None
+            and not score_bundle.prediction_context.candidate_actions
+        )
 
     def predict_rollout(
         self,

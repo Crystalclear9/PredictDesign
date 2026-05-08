@@ -150,7 +150,13 @@ BenchmarkTrainer / BenchmarkEvaluator / scripts
   GCN、GraphSAGE、GAT、Relational Transformer 和 `HybridGraphLayer`。
 
 - [predictdesign/gnn/predictor.py](predictdesign/gnn/predictor.py)
-  图动作预测器。它负责图编码、候选动作打分、action type/count 打分、completion-aware 调整和 rollout apply。
+  图动作预测器。它负责图编码、候选动作打分、action type/count 打分、completion-aware 调整、zero-shot/few-shot 先验融合和 rollout apply。
+
+- [predictdesign/gnn/cold_start_prior.py](predictdesign/gnn/cold_start_prior.py)
+  零训练动作先验。它用 query、source output、节点文本、角色、结构边 metadata、candidate description 做确定性打分。
+
+- [predictdesign/gnn/few_shot_memory.py](predictdesign/gnn/few_shot_memory.py)
+  低样本 transition memory。它把少量已标注 episode 转成非参数案例库，按 source role、target role、relation 和文本 token overlap 给候选动作加分。
 
 - [predictdesign/benchmark/](predictdesign/benchmark)
   负责把不同数据源变成统一的 `BenchmarkEpisode`，并提供训练、评估、rich log 输出。
@@ -183,6 +189,8 @@ BenchmarkTrainer / BenchmarkEvaluator / scripts
 ```python
 ExperimentConfig(
     gnn_type="hybrid",
+    use_zero_shot_action_priors=True,
+    use_few_shot_transition_memory=True,
     use_context_conditioning=True,
     use_candidate_cross_encoder=True,
     use_structural_candidate_priors=True,
@@ -199,11 +207,69 @@ ExperimentConfig(
 预测器额外使用：
 
 - 上下文条件化：`GraphPredictionContext` 会门控更新节点 embedding、图 embedding 和 action type logits。
+- 零训练冷启动先验：在 GNN 尚未训练或样本很少时，先用 source、query、节点文本、结构边、transition id、relation、description 做确定性动作先验。
+- Few-shot transition memory：每个场景只有几十到约 100 条 query 时，先把这些 query/label 变成非参数原型记忆，不依赖梯度训练即可参与排序。
 - 候选 cross-encoder：对 source/target/graph/context/text/relation/edge 特征联合打分。
 - 结构先验：结构 transition metadata 与候选动作匹配时会加分。
 - 冷启动初始化：已有节点不再从纯零 state 开始，而是融合 role、节点文本、图级 profile 和结构边描述。
 
 这些能力是模型能力层面的增强；实际收益仍应通过 holdout 或交叉验证确认。
+
+## 低数据冷启动策略
+
+如果一个场景最多只有约 100 条 query，不建议把“训练一个 GNN”当成第一路径。这个数据量更适合做系统级快速适配：先让规则先验和案例记忆工作，GNN/cross-encoder 只在后续数据变多时学习 residual。
+
+纯 GNN 或 online-learning 在这个设置里有几个现实困难：
+
+- 需要监督数据训练，随机初始化阶段的边分数和 relation 分数不稳定。
+- 在线学习需要高质量即时反馈；如果反馈稀疏、延迟或噪声大，短期收益可能很差。
+- 每个场景只有约 100 条 query 时，train/valid split 很小，容易把场景噪声学成模式。
+
+当前实现采用“zero-shot prior + few-shot memory 优先，GNN 学 residual”的策略：
+
+- `ColdStartActionPriorScorer` 是非参数 scorer，不需要训练。它会用当前 `GraphPredictionContext`、workflow 结构边、transition metadata、节点角色/文本和候选描述计算零训练先验分数。
+- `FewShotTransitionMemory` 是非参数案例库。`BenchmarkTrainer(..., epochs=0).fit(system, train_episodes)` 会跳过梯度训练，但仍然把 episode 里的真实 `CREATE_EDGE` transition 写入 memory。
+- 有 `prediction.transition_candidates` 时，候选分数由 `learned_candidate_score_weight * learned_score + zero_shot_prior_weight * prior_score + few_shot_memory_weight * memory_score` 组成。
+- 没有候选集时，zero-shot prior 和 few-shot edge prior 会加到完整 create-edge score matrix 上，让 source row、结构边、历史相似 source/target role 先被抬高。
+- `zero_shot_action_type_boost` 和 candidate action type boost 会避免冷启动时过早退化成 `no_op`。
+
+100 条 query/场景的推荐起步配置：
+
+```python
+ExperimentConfig(
+    use_zero_shot_action_priors=True,
+    use_few_shot_transition_memory=True,
+    zero_shot_prior_weight=1.5,
+    few_shot_memory_weight=1.25,
+    few_shot_memory_max_examples=512,
+    zero_shot_action_type_boost=1.0,
+    learned_candidate_score_weight=0.0,
+)
+```
+
+最小工作流：
+
+```python
+from predictdesign import BenchmarkTrainer, ExperimentConfig, PredictDesignSystem
+
+config = ExperimentConfig(
+    gnn_type="hybrid",
+    use_zero_shot_action_priors=True,
+    use_few_shot_transition_memory=True,
+    learned_candidate_score_weight=0.0,
+)
+system = PredictDesignSystem(config=config)
+
+# train_episodes 可以只有几十到约 100 条 query 转出来的 BenchmarkEpisode。
+BenchmarkTrainer(epochs=0).fit(system, train_episodes)
+
+# 此时没有做梯度训练，但 few-shot memory 已经可用于 predict/evaluate。
+```
+
+等每个场景积累更多稳定 holdout 数据后，再做两步增强：
+
+- 把 `learned_candidate_score_weight` 调回 `1.0`，让 learned score 参与候选排序。
+- 把 `BenchmarkTrainer(epochs=0)` 改成少量 epoch，例如 `epochs=3` 到 `epochs=10`，让 hybrid GNN / candidate cross-encoder 只学习先验和记忆覆盖不了的 residual。
 
 ## SentenceTransformer fallback
 
@@ -212,6 +278,8 @@ ExperimentConfig(
 - `__missing_*`
 - `__fallback_*`
 - `fallback_hash_*`
+
+这样可以避免缺失测试模型触发短暂 HuggingFace HEAD retry warning，也保证 examples 和测试能离线运行。
 
 示例：
 
@@ -379,6 +447,7 @@ python scripts\cleanup_workspace.py --execute --archive-smoke-results
 - 新增 benchmark runner 放在 `scripts/benchmark/`。
 - 新增清理、监控、shell 启动器放在 `scripts/ops/`。
 - 新增示例需要能离线运行，优先使用 fallback text encoder 或 fake completion。
+- 项目说明集中维护在根目录 `README.md`；不要在子目录新增分散的 README。
 - 修改路径时同步检查 [predictdesign/paths.py](predictdesign/paths.py)。
 - 改动模型行为后至少运行：
 

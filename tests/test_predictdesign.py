@@ -890,6 +890,208 @@ class PredictDesignTests(unittest.TestCase):
             float(bundle.candidate_scores[1].item()),
         )
 
+    def test_zero_shot_prior_ranks_done_work_toward_review_without_training(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            allow_self_loop_prediction=True,
+            candidate_relation_types=("review", "retry"),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            use_context_conditioning=False,
+            use_candidate_cross_encoder=False,
+            use_structural_candidate_priors=False,
+            candidate_text_score_weight=0.0,
+            learned_candidate_score_weight=0.0,
+            zero_shot_prior_weight=1.0,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("coder", "worker", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("reviewer", "reviewer", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ],
+            graph_context_text="Implementation work should go to review when ready.",
+        )
+        context = GraphPredictionContext(
+            source_node_id="coder",
+            query_text="Implementation draft is ready. Choose the next workflow step.",
+            source_output_text="Implementation draft is complete and ready.",
+            candidate_actions=[
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=1.0,
+                    source_node_id="coder",
+                    target_node_id="reviewer",
+                    relation_type="review",
+                    metadata={"description": "send completed implementation to reviewer"},
+                ),
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=1.0,
+                    source_node_id="coder",
+                    target_node_id="coder",
+                    relation_type="retry",
+                    metadata={"description": "retry implementation"},
+                ),
+            ],
+        )
+        bundle = system.predictor.score_action_space(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+            prediction_context=context,
+        )
+        self.assertIsNotNone(bundle.candidate_prior_scores)
+        self.assertGreater(
+            float(bundle.candidate_scores[0].item()),
+            float(bundle.candidate_scores[1].item()),
+        )
+
+    def test_zero_shot_edge_prior_warm_starts_full_action_space(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("activate",),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            use_context_conditioning=False,
+            use_candidate_cross_encoder=False,
+            learned_candidate_score_weight=1.0,
+            zero_shot_prior_weight=10.0,
+            context_source_bias_weight=0.0,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("planner", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("worker", "worker", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ],
+            structural_edges=[("planner", "worker")],
+            graph_context_text="Planner should activate worker.",
+        )
+        context = GraphPredictionContext(
+            source_node_id="planner",
+            query_text="Activate the worker next.",
+            graph_profile_text="Planner should activate worker.",
+        )
+        bundle = system.predictor.score_action_space(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+            prediction_context=context,
+        )
+        row = bundle.node_order.index("planner")
+        col = bundle.node_order.index("worker")
+        reverse_row = bundle.node_order.index("worker")
+        reverse_col = bundle.node_order.index("planner")
+        self.assertGreater(
+            float(bundle.create_scores[row, col].item()),
+            float(bundle.create_scores[reverse_row, reverse_col].item()),
+        )
+
+    def test_few_shot_memory_bootstraps_with_zero_training_epochs(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            allow_self_loop_prediction=True,
+            candidate_relation_types=("review", "retry"),
+            candidate_new_roles=("coder", "reviewer"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            use_context_conditioning=False,
+            use_candidate_cross_encoder=False,
+            use_structural_candidate_priors=False,
+            use_zero_shot_action_priors=False,
+            learned_candidate_score_weight=0.0,
+            candidate_text_score_weight=0.0,
+            few_shot_memory_weight=3.0,
+        )
+        system = PredictDesignSystem(config=config)
+        train_action = PredictedGraphAction(
+            action_type=GraphActionType.CREATE_EDGE,
+            score=1.0,
+            effective_time=1.0,
+            source_node_id="train_coder",
+            target_node_id="train_reviewer",
+            relation_type="review",
+            metadata={"description": "send finished implementation to review"},
+        )
+        train_episode = BenchmarkEpisode(
+            episode_id="few_shot_train",
+            dataset_name="low_data_demo",
+            initial_nodes=[
+                TemporalNode.build("train_coder", "coder", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("train_reviewer", "reviewer", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ],
+            initial_edges=[],
+            initial_graph_context_text="Finished code should be reviewed before retrying.",
+            steps=[
+                EpisodeStep(
+                    observation_time=1.0,
+                    messages=[],
+                    ground_truth_action=train_action,
+                    observed_actions=[train_action],
+                    prediction_context=GraphPredictionContext(
+                        query_text="The implementation is complete and ready for review.",
+                        source_output_text="Implementation completed.",
+                    ),
+                )
+            ],
+        )
+        trainer = BenchmarkTrainer(epochs=0)
+        trainer.fit(system, [train_episode])
+        self.assertGreater(system.predictor.few_shot_memory_size(), 0)
+        self.assertIsNotNone(trainer.last_fit_summary)
+        self.assertEqual(trainer.last_fit_summary.epochs_completed, 0)
+
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("eval_coder", "coder", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("eval_reviewer", "reviewer", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ],
+            graph_context_text="Finished code should be reviewed before retrying.",
+        )
+        context = GraphPredictionContext(
+            query_text="The patch is finished. Pick the next workflow transition.",
+            source_output_text="Implementation completed and ready.",
+            candidate_actions=[
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=2.0,
+                    source_node_id="eval_coder",
+                    target_node_id="eval_reviewer",
+                    relation_type="review",
+                    metadata={"description": "send finished implementation to reviewer"},
+                ),
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=2.0,
+                    source_node_id="eval_coder",
+                    target_node_id="eval_coder",
+                    relation_type="retry",
+                    metadata={"description": "retry implementation by the coder"},
+                ),
+            ],
+        )
+        bundle = system.predictor.score_action_space(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=2.0,
+            prediction_context=context,
+        )
+        self.assertIsNotNone(bundle.candidate_few_shot_scores)
+        self.assertGreater(
+            float(bundle.candidate_scores[0].item()),
+            float(bundle.candidate_scores[1].item()),
+        )
+
     def test_acg_nap_loader_cleans_noise_and_bootstraps_first_label(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

@@ -23,7 +23,13 @@ from .config import ExperimentConfig, LLMApiConfig
 from .ctdg import ContinuousTimeDynamicGraph, StateRecord
 from .encoders import SentenceTransformerEncoder
 from .experiment import PredictDesignSystem
-from .gnn import ColdStartInitializer, HybridGraphLayer, RelationalAttentionLayer
+from .gnn import (
+    ColdStartActionPriorScorer,
+    ColdStartInitializer,
+    FewShotTransitionMemory,
+    HybridGraphLayer,
+    RelationalAttentionLayer,
+)
 from .llm import LLMApiGraphActionPredictor
 from .messages import Message, MessageAction
 from .prediction import (
@@ -44,12 +50,14 @@ __all__ = [
     "BenchmarkEvaluator",
     "BenchmarkSplit",
     "BenchmarkTrainer",
+    "ColdStartActionPriorScorer",
     "ColdStartInitializer",
     "CombinationResult",
     "ContinuousTimeDynamicGraph",
     "DatasetCorpus",
     "EpisodeStep",
     "ExperimentConfig",
+    "FewShotTransitionMemory",
     "GraphPredictionContext",
     "GraphActionType",
     "HybridGraphLayer",
