@@ -41,6 +41,8 @@ class FewShotTransitionExample:
     text: str
     tokens: set[str]
     count: int = 1
+    source_node_id: str = ""
+    target_node_id: str = ""
 
 
 class FewShotTransitionMemory:
@@ -58,6 +60,47 @@ class FewShotTransitionMemory:
         self.examples.clear()
         self._signature_to_index.clear()
 
+    def snapshot(self) -> list[FewShotTransitionExample]:
+        return [
+            FewShotTransitionExample(
+                source_role=example.source_role,
+                target_role=example.target_role,
+                relation_type=example.relation_type,
+                text=example.text,
+                tokens=set(example.tokens),
+                count=example.count,
+                source_node_id=example.source_node_id,
+                target_node_id=example.target_node_id,
+            )
+            for example in self.examples
+        ]
+
+    def restore(self, examples: list[FewShotTransitionExample]) -> None:
+        self.examples = [
+            FewShotTransitionExample(
+                source_role=example.source_role,
+                target_role=example.target_role,
+                relation_type=example.relation_type,
+                text=example.text,
+                tokens=set(example.tokens),
+                count=example.count,
+                source_node_id=example.source_node_id,
+                target_node_id=example.target_node_id,
+            )
+            for example in examples[-self.max_examples :]
+        ]
+        self._signature_to_index = {
+            (
+                item.source_role,
+                item.target_role,
+                item.relation_type,
+                item.source_node_id,
+                item.target_node_id,
+                self._normalize(item.text)[:240],
+            ): index
+            for index, item in enumerate(self.examples)
+        }
+
     def add(
         self,
         *,
@@ -65,12 +108,16 @@ class FewShotTransitionMemory:
         target_role: str,
         relation_type: str,
         text: str,
+        source_node_id: str = "",
+        target_node_id: str = "",
     ) -> None:
         relation = relation_type.strip().lower() or "unknown"
         source = source_role.strip().lower() or "unknown"
         target = target_role.strip().lower() or "unknown"
+        source_id = source_node_id.strip()
+        target_id = target_node_id.strip()
         normalized_text = self._normalize(text)
-        signature = (source, target, relation, normalized_text[:240])
+        signature = (source, target, relation, source_id, target_id, normalized_text[:240])
         if signature in self._signature_to_index:
             self.examples[self._signature_to_index[signature]].count += 1
             return
@@ -81,6 +128,8 @@ class FewShotTransitionMemory:
                     item.source_role,
                     item.target_role,
                     item.relation_type,
+                    item.source_node_id,
+                    item.target_node_id,
                     self._normalize(item.text)[:240],
                 ): index
                 for index, item in enumerate(self.examples)
@@ -91,6 +140,8 @@ class FewShotTransitionMemory:
             relation_type=relation,
             text=normalized_text,
             tokens=self._tokens(normalized_text),
+            source_node_id=source_id,
+            target_node_id=target_id,
         )
         self._signature_to_index[signature] = len(self.examples)
         self.examples.append(example)
@@ -167,6 +218,8 @@ class FewShotTransitionMemory:
                         target_role=target_role,
                         relation="",
                         tokens=pair_tokens,
+                        source_node_id=source_node_id,
+                        target_node_id=target_node_id,
                     )
                     for example in self.examples
                 )
@@ -182,12 +235,20 @@ class FewShotTransitionMemory:
         target_role: str,
         relation: str,
         tokens: set[str],
+        source_node_id: str = "",
+        target_node_id: str = "",
     ) -> float:
         score = 0.0
-        if source_role and source_role == example.source_role:
+        source_role_matches = bool(source_role and source_role == example.source_role)
+        if source_role_matches:
             score += 0.45
         if target_role and target_role == example.target_role:
-            score += 0.55
+            score += 0.55 if source_role_matches else 0.15
+        source_id_matches = bool(source_node_id and source_node_id == example.source_node_id)
+        if source_id_matches:
+            score += 0.75
+        if source_id_matches and target_node_id and target_node_id == example.target_node_id:
+            score += 2.25
         if relation and relation == example.relation_type:
             score += 1.00
         score += 1.50 * self._overlap(tokens, example.tokens)
@@ -225,6 +286,7 @@ class FewShotTransitionMemory:
                 prediction_context.graph_profile_text,
                 prediction_context.query_text,
                 prediction_context.source_output_text,
+                prediction_context.runtime_text,
             )
             if str(part).strip()
         )

@@ -19,11 +19,17 @@ from predictdesign import (
     PredictDesignSystem,
     TemporalEdge,
     TemporalNode,
+    load_acg_nap_candidate_corpus,
     load_acg_nap_corpus,
 )
 from predictdesign.benchmark.multiagentbench import MultiAgentBenchAdapter
 from predictdesign.benchmark.rich_log import train_mlp_on_rich_log, write_rich_log
 from predictdesign.benchmark.trainer import BenchmarkTrainer
+from predictdesign.benchmark.acg_nap_workflow_policy import (
+    evaluate_workflow_policy_payloads,
+    prediction_view_from_payload,
+    rank_workflow_candidates,
+)
 from predictdesign.messages import Message
 from predictdesign.prediction import PredictedGraphAction
 from predictdesign.state_update import MDPStateUpdater, build_state_updater
@@ -778,6 +784,374 @@ class PredictDesignTests(unittest.TestCase):
         self.assertEqual(predicted[0].target_node_id, "worker")
         self.assertEqual(predicted[0].relation_type, "activate")
 
+    def test_runtime_message_becomes_cold_start_candidate(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("communication", "delegation"),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            enable_add_node_prediction=False,
+            learned_candidate_score_weight=0.0,
+            runtime_message_candidate_score=20.0,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("planner", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("worker", "worker", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ]
+        )
+        message = Message.build_completion_message(
+            time=1.0,
+            source_node_id="planner",
+            target_node_id="worker",
+            context=[0, 1, 0, 0, 0, 0],
+            hidden_dim=12,
+            context_dim=6,
+            device="cpu",
+        )
+        message.metadata["raw_text"] = "from agent planner to worker"
+        message.metadata["relation_type"] = "communication"
+        message.metadata["available_for_prediction"] = True
+        system.ingest_messages([message])
+
+        predicted = system.predictor.predict_action_set(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+        )
+
+        self.assertEqual(predicted[0].action_type, GraphActionType.CREATE_EDGE)
+        self.assertEqual(predicted[0].source_node_id, "planner")
+        self.assertEqual(predicted[0].target_node_id, "worker")
+        self.assertEqual(predicted[0].relation_type, "communication")
+
+    def test_same_time_runtime_message_requires_visibility_marker(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("communication",),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            enable_add_node_prediction=False,
+            no_directed_message_noop_bias=10.0,
+            runtime_message_candidate_score=20.0,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("planner", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("worker", "worker", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ]
+        )
+        future_output = Message.build_completion_message(
+            time=1.0,
+            source_node_id="planner",
+            target_node_id="worker",
+            context=[0, 1, 0, 0, 0, 0],
+            hidden_dim=12,
+            context_dim=6,
+            device="cpu",
+        )
+        future_output.metadata["relation_type"] = "communication"
+        system.ingest_messages([future_output])
+
+        predicted = system.predictor.predict_action_set(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+        )
+        self.assertEqual(predicted[0].action_type, GraphActionType.NO_OP)
+
+        visible_output = Message.build_completion_message(
+            time=2.0,
+            source_node_id="planner",
+            target_node_id="worker",
+            context=[0, 1, 0, 0, 0, 0],
+            hidden_dim=12,
+            context_dim=6,
+            device="cpu",
+        )
+        visible_output.metadata["relation_type"] = "communication"
+        visible_output.metadata["available_for_prediction"] = True
+        system.ingest_messages([visible_output])
+        predicted = system.predictor.predict_action_set(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=2.0,
+        )
+        self.assertEqual(predicted[0].action_type, GraphActionType.CREATE_EDGE)
+        self.assertEqual(predicted[0].target_node_id, "worker")
+
+    def test_cold_start_without_directed_messages_prefers_no_op(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("communication",),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            enable_add_node_prediction=False,
+            no_directed_message_noop_bias=10.0,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("planner", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("worker", "worker", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ]
+        )
+
+        predicted = system.predictor.predict_action_set(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+        )
+
+        self.assertEqual(predicted[0].action_type, GraphActionType.NO_OP)
+
+    def test_scenario_metadata_ranks_round_robin_next_agent(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("communication",),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            learned_candidate_score_weight=0.0,
+            enable_add_node_prediction=False,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("agent1", "worker", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("agent2", "worker", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("agent3", "worker", [0, 0, 1, 0, 0, 0], 6, "cpu"),
+            ]
+        )
+        context = GraphPredictionContext(
+            source_node_id="agent2",
+            candidate_actions=[
+                PredictedGraphAction(
+                    GraphActionType.CREATE_EDGE,
+                    0.0,
+                    1.0,
+                    "agent2",
+                    "agent1",
+                    "communication",
+                ),
+                PredictedGraphAction(
+                    GraphActionType.CREATE_EDGE,
+                    0.0,
+                    1.0,
+                    "agent2",
+                    "agent3",
+                    "communication",
+                ),
+            ],
+            metadata={
+                "scenario": "coding",
+                "current_floor": "agent2",
+                "iteration_order": ["agent1", "agent2", "agent3"],
+            },
+        )
+
+        predicted = system.predictor.predict_action_set(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+            prediction_context=context,
+        )
+
+        self.assertEqual(predicted[0].target_node_id, "agent3")
+
+    def test_query_start_metadata_ranks_first_round_robin_agent_without_output(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("activate",),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            learned_candidate_score_weight=0.0,
+            enable_add_node_prediction=False,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("scheduler", "scheduler", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("agent1", "worker", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("agent2", "worker", [0, 0, 1, 0, 0, 0], 6, "cpu"),
+            ]
+        )
+        context = GraphPredictionContext(
+            source_node_id="scheduler",
+            query_text="new query arrives",
+            source_output_text="future output must be stripped",
+            runtime_text="future runtime must be stripped",
+            candidate_actions=[
+                PredictedGraphAction(
+                    GraphActionType.CREATE_EDGE,
+                    0.0,
+                    1.0,
+                    "scheduler",
+                    "agent1",
+                    "activate",
+                ),
+                PredictedGraphAction(
+                    GraphActionType.CREATE_EDGE,
+                    0.0,
+                    1.0,
+                    "scheduler",
+                    "agent2",
+                    "activate",
+                ),
+            ],
+            metadata={
+                "scenario": "coding",
+                "query_start": True,
+                "iteration_order": ["agent1", "agent2"],
+            },
+        ).query_time_view()
+
+        self.assertEqual(context.source_output_text, "")
+        self.assertEqual(context.runtime_text, "")
+        predicted = system.predictor.predict_action_set(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+            prediction_context=context,
+        )
+
+        self.assertEqual(predicted[0].source_node_id, "scheduler")
+        self.assertEqual(predicted[0].target_node_id, "agent1")
+
+    def test_scenario_metadata_ranks_werewolf_night_roles(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("activate",),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            learned_candidate_score_weight=0.0,
+            enable_add_node_prediction=False,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("system", "scheduler", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("wolf1", "wolf", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("villager1", "villager", [0, 0, 1, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("seer1", "seer", [0, 0, 0, 1, 0, 0], 6, "cpu"),
+            ]
+        )
+        context = GraphPredictionContext(
+            source_node_id="system",
+            candidate_actions=[
+                PredictedGraphAction(
+                    GraphActionType.CREATE_EDGE,
+                    0.0,
+                    1.0,
+                    "system",
+                    "villager1",
+                    "activate",
+                ),
+                PredictedGraphAction(
+                    GraphActionType.CREATE_EDGE,
+                    0.0,
+                    1.0,
+                    "system",
+                    "seer1",
+                    "activate",
+                ),
+            ],
+            metadata={
+                "scenario": "werewolf",
+                "phase": "night",
+                "alive": ["wolf1", "villager1", "seer1"],
+                "role_map": {
+                    "wolf": ["wolf1"],
+                    "villager": ["villager1"],
+                    "seer": ["seer1"],
+                },
+            },
+        )
+
+        predicted = system.predictor.predict_action_set(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+            prediction_context=context,
+        )
+
+        self.assertIn(predicted[0].target_node_id, {"wolf1", "seer1"})
+
+    def test_werewolf_active_role_metadata_ranks_current_stage(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("activate",),
+            candidate_new_roles=("planner", "worker"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            learned_candidate_score_weight=0.0,
+            enable_add_node_prediction=False,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("scheduler", "scheduler", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("wolf1", "wolf", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("seer1", "seer", [0, 0, 1, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("guard1", "guard", [0, 0, 0, 1, 0, 0], 6, "cpu"),
+            ]
+        )
+        context = GraphPredictionContext(
+            source_node_id="scheduler",
+            candidate_actions=[
+                PredictedGraphAction(
+                    GraphActionType.CREATE_EDGE,
+                    0.0,
+                    1.0,
+                    "scheduler",
+                    "wolf1",
+                    "activate",
+                ),
+                PredictedGraphAction(
+                    GraphActionType.CREATE_EDGE,
+                    0.0,
+                    1.0,
+                    "scheduler",
+                    "seer1",
+                    "activate",
+                ),
+            ],
+            metadata={
+                "scenario": "werewolf",
+                "phase": "night",
+                "active_roles": ["seer"],
+                "alive": ["wolf1", "seer1", "guard1"],
+                "role_map": {
+                    "wolf": ["wolf1"],
+                    "seer": ["seer1"],
+                    "guard": ["guard1"],
+                },
+            },
+        )
+
+        predicted = system.predictor.predict_action_set(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=1.0,
+            prediction_context=context,
+        )
+
+        self.assertEqual(predicted[0].target_node_id, "seer1")
+
     def test_hybrid_backbone_supports_context_candidate_scoring(self) -> None:
         config = ExperimentConfig(
             context_dim=6,
@@ -1092,6 +1466,265 @@ class PredictDesignTests(unittest.TestCase):
             float(bundle.candidate_scores[1].item()),
         )
 
+    def test_online_few_shot_updates_support_prefix_speculation(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            allow_self_loop_prediction=True,
+            candidate_relation_types=("review", "retry"),
+            candidate_new_roles=("coder", "reviewer"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            use_context_conditioning=False,
+            use_candidate_cross_encoder=False,
+            use_structural_candidate_priors=False,
+            use_zero_shot_action_priors=False,
+            learned_candidate_score_weight=0.0,
+            candidate_text_score_weight=0.0,
+            few_shot_memory_weight=3.0,
+            use_online_few_shot_updates=True,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("coder_a", "coder", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("reviewer_a", "reviewer", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("coder_b", "coder", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("reviewer_b", "reviewer", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+            ],
+            graph_context_text="Finished implementation should be reviewed.",
+        )
+        first_action = PredictedGraphAction(
+            action_type=GraphActionType.CREATE_EDGE,
+            score=1.0,
+            effective_time=1.0,
+            source_node_id="coder_a",
+            target_node_id="reviewer_a",
+            relation_type="review",
+            metadata={"description": "send completed implementation to review"},
+        )
+        first_context = GraphPredictionContext(
+            source_node_id="coder_a",
+            query_text="The implementation is complete.",
+            source_output_text="Done and ready for review.",
+            runtime_text="query_index=1 prefix_count=1",
+        )
+        added = system.record_observed_actions([first_action], prediction_context=first_context)
+        self.assertEqual(added, 1)
+        self.assertEqual(system.predictor.few_shot_memory_size(), 1)
+
+        speculative_context = GraphPredictionContext(
+            source_node_id="coder_b",
+            query_text="Another implementation is complete. Predict the next transition.",
+            source_output_text="Patch completed and ready.",
+            runtime_text="query_index=2 prefix_count=2",
+            candidate_actions=[
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=2.0,
+                    source_node_id="coder_b",
+                    target_node_id="reviewer_b",
+                    relation_type="review",
+                    metadata={"description": "send completed implementation to reviewer"},
+                ),
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=2.0,
+                    source_node_id="coder_b",
+                    target_node_id="coder_b",
+                    relation_type="retry",
+                    metadata={"description": "retry implementation"},
+                ),
+            ],
+        )
+        bundle = system.predictor.score_action_space(
+            temporal_graph=system.temporal_graph,
+            ctdg=system.ctdg,
+            observation_time=2.0,
+            prediction_context=speculative_context,
+        )
+        self.assertIsNotNone(bundle.candidate_few_shot_scores)
+        self.assertIn("few_shot_memory_size=1", bundle.prediction_context.runtime_text)
+        self.assertGreater(
+            float(bundle.candidate_few_shot_scores[0].item()),
+            float(bundle.candidate_few_shot_scores[1].item()),
+        )
+        rollout = system.predict_speculative_action_sets(
+            observation_time=2.0,
+            steps=1,
+            prediction_context=speculative_context,
+        )
+        self.assertEqual(rollout.actions_by_step[0][0].target_node_id, "reviewer_b")
+
+    def test_speculative_schedule_reuses_current_query_context_without_future_query(self) -> None:
+        evaluator = BenchmarkEvaluator(
+            context_dim=6,
+            hidden_dim=12,
+            train_epochs=0,
+            sentence_transformer_path=MISSING_ST_MODEL,
+        )
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            sentence_transformer_path=MISSING_ST_MODEL,
+        )
+        current_context = GraphPredictionContext(
+            source_node_id="a",
+            query_text="current query",
+            candidate_actions=[
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=1.0,
+                    source_node_id="a",
+                    target_node_id="b",
+                )
+            ],
+        )
+        future_context = GraphPredictionContext(
+            source_node_id="c",
+            query_text="future query should not be visible",
+        )
+        schedule = evaluator._prediction_context_schedule(
+            current_context=current_context,
+            future_targets=[
+                (
+                    2.0,
+                    [
+                        PredictedGraphAction(
+                            action_type=GraphActionType.NO_OP,
+                            score=1.0,
+                            effective_time=2.0,
+                        )
+                    ],
+                    future_context,
+                )
+            ],
+            config=config,
+        )
+        self.assertEqual(schedule[0].query_text, "current query")
+        self.assertEqual(len(schedule[0].candidate_actions), 1)
+        self.assertNotEqual(schedule[0].query_text, future_context.query_text)
+
+    def test_query_runtime_update_predicts_inside_query_execution(self) -> None:
+        config = ExperimentConfig(
+            context_dim=6,
+            hidden_dim=12,
+            gnn_type="gcn",
+            candidate_relation_types=("activate", "review", "retry"),
+            candidate_new_roles=("planner", "coder", "reviewer"),
+            sentence_transformer_path=MISSING_ST_MODEL,
+            use_context_conditioning=False,
+            use_candidate_cross_encoder=False,
+            learned_candidate_score_weight=0.0,
+            candidate_text_score_weight=0.0,
+            zero_shot_prior_weight=1.5,
+            allow_self_loop_prediction=True,
+            prediction_horizon=2,
+        )
+        system = PredictDesignSystem(config=config)
+        system.initialize_graph(
+            nodes=[
+                TemporalNode.build("planner", "planner", [1, 0, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("coder", "coder", [0, 1, 0, 0, 0, 0], 6, "cpu"),
+                TemporalNode.build("reviewer", "reviewer", [0, 0, 1, 0, 0, 0], 6, "cpu"),
+            ],
+            graph_context_text="Plan, implement, then review inside one query execution.",
+        )
+        activate = PredictedGraphAction(
+            action_type=GraphActionType.CREATE_EDGE,
+            score=1.0,
+            effective_time=1.0,
+            source_node_id="planner",
+            target_node_id="coder",
+            relation_type="activate",
+            metadata={"description": "planner activates coder"},
+        )
+        prediction_context = GraphPredictionContext(
+            source_node_id="coder",
+            query_text="Continue the current query execution after the coder reports progress.",
+            source_output_text="Implementation is complete and ready for review.",
+            runtime_text="query_id=q1 phase=agent_execution",
+            candidate_actions=[
+                activate,
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=2.0,
+                    source_node_id="coder",
+                    target_node_id="reviewer",
+                    relation_type="review",
+                    metadata={"description": "coder sends completed implementation to reviewer"},
+                ),
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=0.0,
+                    effective_time=2.0,
+                    source_node_id="coder",
+                    target_node_id="coder",
+                    relation_type="retry",
+                    metadata={"description": "coder retries implementation"},
+                ),
+            ],
+        )
+        rollout = system.process_query_runtime_update(
+            observation_time=2.0,
+            prediction_context=prediction_context,
+            context_updates={"coder": [0, 1, 0, 0, 0, 0]},
+            context_text_updates={"coder": "Implementation is complete and ready for review."},
+            observed_actions=[activate],
+            runtime_text="agent=coder output_ready=true",
+            steps=2,
+        )
+        self.assertTrue(system.temporal_graph.has_active_edge("planner", "coder", 2.0))
+        first_window = rollout.actions_by_step[0]
+        self.assertTrue(
+            any(
+                action.source_node_id == "coder"
+                and action.target_node_id == "reviewer"
+                and action.relation_type == "review"
+                for action in first_window
+            )
+        )
+        self.assertFalse(
+            any(
+                action.source_node_id == "planner"
+                and action.target_node_id == "coder"
+                and action.relation_type == "activate"
+                for action in first_window
+            )
+        )
+        self.assertIsNotNone(system.active_prediction_context)
+        self.assertIn("agent=coder output_ready=true", system.active_prediction_context.runtime_text)
+
+        second_rollout = system.process_query_runtime_update(
+            observation_time=2.5,
+            context_updates={"coder": [0, 1, 0, 0, 0, 0]},
+            context_text_updates={"coder": "Reviewer is still the next useful agent."},
+            runtime_text="phase=post_coder_waiting_for_review",
+            steps=1,
+        )
+        self.assertIsNotNone(system.active_prediction_context)
+        self.assertEqual(
+            system.active_prediction_context.query_text,
+            prediction_context.query_text,
+        )
+        self.assertEqual(len(system.active_prediction_context.candidate_actions), 3)
+        self.assertIn(
+            "phase=post_coder_waiting_for_review",
+            system.active_prediction_context.runtime_text,
+        )
+        self.assertTrue(
+            any(
+                action.source_node_id == "coder"
+                and action.target_node_id == "reviewer"
+                and action.relation_type == "review"
+                for action in second_rollout.actions_by_step[0]
+            )
+        )
+
     def test_acg_nap_loader_cleans_noise_and_bootstraps_first_label(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1135,6 +1768,13 @@ class PredictDesignTests(unittest.TestCase):
                                 "tail": ["PLANNER"],
                                 "head": ["agent1"],
                                 "description": "planner activates analyst",
+                            },
+                            {
+                                "id": "act_agent1_agent2",
+                                "type": "activate",
+                                "tail": ["agent1"],
+                                "head": ["agent2"],
+                                "description": "graph transition activates coder",
                             },
                             {
                                 "id": "retry_agent2",
@@ -1274,7 +1914,12 @@ class PredictDesignTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            adapter = ACGNapAdapter(context_dim=6, hidden_dim=12, device="cpu")
+            adapter = ACGNapAdapter(
+                context_dim=6,
+                hidden_dim=12,
+                device="cpu",
+                candidate_source="prediction_transition_candidates",
+            )
             corpus = load_acg_nap_corpus(root, adapter)
             coding_episode = corpus.datasets["coding"].episodes[0]
             bootstrap_step = coding_episode.steps[0]
@@ -1290,9 +1935,12 @@ class PredictDesignTests(unittest.TestCase):
             agent1_node = next(node for node in coding_episode.initial_nodes if node.node_id == "agent1")
             self.assertLessEqual(len(agent1_node.context_text), 480)
             self.assertIn("profile=", agent1_node.context_text)
-            self.assertIn("context=", agent1_node.context_text)
+            self.assertNotIn("context=", agent1_node.context_text)
+            self.assertNotIn("latest_output=", agent1_node.context_text)
             self.assertIsNotNone(bootstrap_step.prediction_context)
             self.assertIn("very long query prompt", bootstrap_step.prediction_context.query_text)
+            self.assertEqual(bootstrap_step.prediction_context.source_output_text, "")
+            self.assertEqual(bootstrap_step.prediction_context.runtime_text, "")
             self.assertEqual(bootstrap_step.prediction_context.source_node_id, "agent1")
             self.assertEqual(
                 bootstrap_step.prediction_context.candidate_actions[0].metadata["description"],
@@ -1317,6 +1965,136 @@ class PredictDesignTests(unittest.TestCase):
                 corpus.cleaning_summary["loaded_fields"]["prediction.transition_candidates"],
                 0,
             )
+
+            graph_adapter = ACGNapAdapter(context_dim=6, hidden_dim=12, device="cpu")
+            graph_corpus = load_acg_nap_corpus(root, graph_adapter)
+            graph_step = graph_corpus.datasets["coding"].episodes[0].steps[0]
+            self.assertEqual(
+                graph_step.prediction_context.candidate_actions[0].metadata["description"],
+                "graph transition activates coder",
+            )
+            self.assertEqual(
+                graph_step.prediction_context.candidate_actions[0].metadata["candidate_source"],
+                "graph_transitions_by_source",
+            )
+
+            runtime_adapter = ACGNapAdapter(
+                context_dim=6,
+                hidden_dim=12,
+                device="cpu",
+                include_node_runtime_context=True,
+                include_latest_output_in_node_context=True,
+                candidate_source="prediction_transition_candidates",
+            )
+            runtime_corpus = load_acg_nap_corpus(root, runtime_adapter)
+            runtime_episode = runtime_corpus.datasets["coding"].episodes[0]
+            runtime_agent1_node = next(
+                node for node in runtime_episode.initial_nodes if node.node_id == "agent1"
+            )
+            self.assertIn("context=", runtime_agent1_node.context_text)
+            self.assertIn("latest_output=", runtime_agent1_node.context_text)
+
+            ablation_adapter = ACGNapAdapter(
+                context_dim=6,
+                hidden_dim=12,
+                device="cpu",
+                role_prompt_query_only=True,
+            )
+            ablation_corpus = load_acg_nap_candidate_corpus(root, ablation_adapter)
+            ablation_episode = ablation_corpus.datasets["coding"].episodes[0]
+            ablation_step = ablation_episode.steps[0]
+            ablation_agent1_node = next(
+                node for node in ablation_episode.initial_nodes if node.node_id == "agent1"
+            )
+            self.assertIn("role=", ablation_agent1_node.context_text)
+            self.assertIn("profile=", ablation_agent1_node.context_text)
+            self.assertNotIn("context=", ablation_agent1_node.context_text)
+            self.assertNotIn("latest_output=", ablation_agent1_node.context_text)
+            self.assertEqual(ablation_episode.initial_graph_context_text, "")
+            self.assertEqual(ablation_episode.initial_structural_edges, [])
+            self.assertEqual(ablation_episode.initial_structural_edge_metadata, {})
+            self.assertIsNotNone(ablation_step.prediction_context)
+            self.assertIn("very long query prompt", ablation_step.prediction_context.query_text)
+            self.assertEqual(ablation_step.prediction_context.source_node_id, None)
+            self.assertEqual(ablation_step.prediction_context.graph_profile_text, "")
+            self.assertEqual(ablation_step.prediction_context.source_output_text, "")
+            self.assertEqual(ablation_step.prediction_context.runtime_text, "")
+            self.assertEqual(ablation_step.prediction_context.candidate_actions, [])
+            self.assertEqual(ablation_step.prediction_context.metadata, {})
+            self.assertEqual(
+                ablation_step.candidate_actions[0].metadata,
+                {},
+            )
+
+    def test_acg_nap_workflow_policy_view_excludes_same_step_outputs(self) -> None:
+        payload = {
+            "graph": {
+                "nodes": {
+                    "planner": {
+                        "profile": "Runtime planner",
+                        "context": "public plan state",
+                        "latest_output": "secret gold answer",
+                    },
+                    "agent1": {
+                        "profile": "Implementation agent",
+                        "context": "public implementation state",
+                        "latest_output": "another secret",
+                    },
+                }
+            },
+            "prediction": {
+                "source": "agent1",
+                "query": "continue the coding task",
+                "transition_candidates": [
+                    {"relation": "activate", "targets": ["agent2"]},
+                    {"relation": "delegate_return", "targets": ["planner"]},
+                ],
+                "label": {"relation": "delegate_return", "targets": ["planner"]},
+            },
+        }
+        view = prediction_view_from_payload(payload)
+        visible_profile_text = " ".join(text for _, text in view.node_profile_by_id)
+        self.assertIn("Implementation agent", visible_profile_text)
+        self.assertNotIn("public implementation state", visible_profile_text)
+        self.assertNotIn("secret gold answer", visible_profile_text)
+        ranked = rank_workflow_candidates(
+            view,
+            previous_observed_action=("planner", "agent1", "delegate"),
+            scenario="coding",
+        )
+        self.assertEqual(ranked[0], ("agent1", "planner", "delegate_return"))
+
+    def test_acg_nap_workflow_policy_updates_online_prefix_after_prediction(self) -> None:
+        first_payload = {
+            "graph": {"nodes": {"planner": {"profile": "planner"}, "agent1": {"profile": "coder"}}},
+            "prediction": {
+                "source": "planner",
+                "query": "start implementation",
+                "transition_candidates": [
+                    {"relation": "delegate", "targets": ["agent1"]},
+                ],
+                "label": {"relation": "delegate", "targets": ["agent1"]},
+            },
+        }
+        second_payload = {
+            "graph": {"nodes": {"planner": {"profile": "planner"}, "agent1": {"profile": "coder"}}},
+            "prediction": {
+                "source": "agent1",
+                "query": "implementation has enough information to return",
+                "transition_candidates": [
+                    {"relation": "activate", "targets": ["agent2"]},
+                    {"relation": "delegate_return", "targets": ["planner"]},
+                ],
+                "label": {"relation": "delegate_return", "targets": ["planner"]},
+            },
+        }
+        result = evaluate_workflow_policy_payloads(
+            [("demo.jsonl", [first_payload, second_payload])],
+            dataset_name="demo",
+            scenario="coding",
+        )
+        self.assertEqual(result.total_steps, 2)
+        self.assertEqual(result.hit_at_1, 1.0)
 
     def test_future_rollout_targets_use_supervision_actions(self) -> None:
         trainer = BenchmarkTrainer()

@@ -13,6 +13,6 @@ Thumbs.db
 .DS_Store
 vendor/prefetch-kv-mas/
 data/acg_nap/
-
+.claude/
 # Local experiment clutter
-results/archive/
+results/

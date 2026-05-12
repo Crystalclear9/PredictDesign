@@ -88,12 +88,33 @@ class ACGNapAdapter:
         device: str = "cpu",
         max_graph_profile_chars: int = 240,
         max_node_text_chars: int = 480,
+        include_node_runtime_context: bool = False,
+        include_latest_output_in_node_context: bool = False,
+        include_source_output_messages: bool = False,
+        allow_oracle_candidate_fallback: bool = False,
+        role_prompt_query_only: bool = False,
+        candidate_source: str = "graph_transitions_by_source",
     ) -> None:
         self.context_dim = context_dim
         self.hidden_dim = hidden_dim
         self.device = device
         self.max_graph_profile_chars = max_graph_profile_chars
         self.max_node_text_chars = max_node_text_chars
+        self.include_node_runtime_context = include_node_runtime_context
+        self.include_latest_output_in_node_context = include_latest_output_in_node_context
+        self.include_source_output_messages = include_source_output_messages
+        self.allow_oracle_candidate_fallback = allow_oracle_candidate_fallback
+        self.role_prompt_query_only = role_prompt_query_only
+        if candidate_source not in {
+            "graph_transitions_by_source",
+            "graph_transitions_all_edges",
+            "prediction_transition_candidates",
+        }:
+            raise ValueError(
+                "candidate_source must be one of: graph_transitions_by_source, "
+                "graph_transitions_all_edges, prediction_transition_candidates"
+            )
+        self.candidate_source = candidate_source
         self.cleaning_summary = ACGNapCleaningSummary(
             root_path="",
             max_graph_profile_chars=max_graph_profile_chars,
@@ -132,8 +153,10 @@ class ACGNapAdapter:
         first_payload = payloads[0]
         workflow_id = str(first_payload.get("workflow_id") or path.stem)
         initial_nodes = self._build_initial_nodes(first_payload, scenario)
-        initial_structural_edges = self._build_structural_edges(first_payload)
-        initial_structural_edge_metadata = self._build_structural_edge_metadata(first_payload)
+        initial_structural_edges = [] if self.role_prompt_query_only else self._build_structural_edges(first_payload)
+        initial_structural_edge_metadata = (
+            {} if self.role_prompt_query_only else self._build_structural_edge_metadata(first_payload)
+        )
         initial_graph_context_text = self._bootstrap_query_text(first_payload, scenario=scenario)
         steps = self._build_steps(payloads, initial_nodes, scenario)
         if not steps:
@@ -159,8 +182,10 @@ class ACGNapAdapter:
         first_payload = payloads[0]
         workflow_id = str(first_payload.get("workflow_id") or path.stem)
         initial_nodes = self._build_initial_nodes(first_payload, scenario)
-        initial_structural_edges = self._build_structural_edges(first_payload)
-        initial_structural_edge_metadata = self._build_structural_edge_metadata(first_payload)
+        initial_structural_edges = [] if self.role_prompt_query_only else self._build_structural_edges(first_payload)
+        initial_structural_edge_metadata = (
+            {} if self.role_prompt_query_only else self._build_structural_edge_metadata(first_payload)
+        )
         initial_graph_context_text = self._bootstrap_query_text(first_payload, scenario=scenario)
         steps = self._build_candidate_steps(payloads, initial_nodes, scenario)
         if not steps:
@@ -296,14 +321,18 @@ class ACGNapAdapter:
                 ground_truth_action=bootstrap_action,
                 observed_actions=[bootstrap_action],
                 candidate_actions=[self._clone_action(action) for action in bootstrap_candidates],
-                context_updates={node_id: vector for node_id, vector, _ in bootstrap_contexts},
-                context_text_updates={node_id: text for node_id, _, text in bootstrap_contexts},
+                context_updates={} if self.role_prompt_query_only else {
+                    node_id: vector for node_id, vector, _ in bootstrap_contexts
+                },
+                context_text_updates={} if self.role_prompt_query_only else {
+                    node_id: text for node_id, _, text in bootstrap_contexts
+                },
                 prediction_context=self._prediction_context(
                     bootstrap_payload,
                     scenario=scenario,
                     time_value=bootstrap_time,
                     candidate_actions=bootstrap_candidates,
-                ),
+                ).query_time_view(),
             )
         )
         for payload in payloads:
@@ -328,14 +357,18 @@ class ACGNapAdapter:
                     ground_truth_action=observed_actions[0],
                     observed_actions=observed_actions,
                     candidate_actions=[self._clone_action(action) for action in candidate_actions],
-                    context_updates={node_id: vector for node_id, vector, _ in context_updates},
-                    context_text_updates={node_id: text for node_id, _, text in context_updates},
+                    context_updates={} if self.role_prompt_query_only else {
+                        node_id: vector for node_id, vector, _ in context_updates
+                    },
+                    context_text_updates={} if self.role_prompt_query_only else {
+                        node_id: text for node_id, _, text in context_updates
+                    },
                     prediction_context=self._prediction_context(
                         payload,
                         scenario=scenario,
                         time_value=observation_time,
                         candidate_actions=candidate_actions,
-                    ),
+                    ).query_time_view(),
                 )
             )
         return steps
@@ -361,15 +394,16 @@ class ACGNapAdapter:
             if not observed_actions:
                 continue
             candidate_actions = self._candidate_actions(payload, observation_time)
-            if not candidate_actions:
+            if not candidate_actions and self.allow_oracle_candidate_fallback:
                 candidate_actions = [self._clone_action(action) for action in observed_actions]
             context_updates = self._context_updates_from_payload(payload, scenario)
             messages: list[Message] = []
             if index == 0:
                 messages.extend(query_messages)
-            source_message = self._build_source_output_message(payload, observation_time)
-            if source_message is not None:
-                messages.append(source_message)
+            if self.include_source_output_messages:
+                source_message = self._build_source_output_message(payload, observation_time)
+                if source_message is not None:
+                    messages.append(source_message)
             steps.append(
                 EpisodeStep(
                     observation_time=observation_time,
@@ -378,14 +412,18 @@ class ACGNapAdapter:
                     observed_actions=[self._clone_action(action) for action in observed_actions],
                     valid_next_actions=[self._clone_action(action) for action in observed_actions],
                     candidate_actions=[self._clone_action(action) for action in candidate_actions],
-                    context_updates={node_id: vector for node_id, vector, _ in context_updates},
-                    context_text_updates={node_id: text for node_id, _, text in context_updates},
+                    context_updates={} if self.role_prompt_query_only else {
+                        node_id: vector for node_id, vector, _ in context_updates
+                    },
+                    context_text_updates={} if self.role_prompt_query_only else {
+                        node_id: text for node_id, _, text in context_updates
+                    },
                     prediction_context=self._prediction_context(
                         payload,
                         scenario=scenario,
                         time_value=observation_time,
                         candidate_actions=candidate_actions,
-                    ),
+                    ).query_time_view(),
                 )
             )
         return steps
@@ -433,10 +471,20 @@ class ACGNapAdapter:
             for target_node_id in targets
         ]
         for action in actions:
-            action.metadata["description"] = self._transition_description(payload, action)
+            if not self.role_prompt_query_only:
+                action.metadata["description"] = self._transition_description(payload, action)
         return actions
 
     def _candidate_actions(
+        self,
+        payload: dict[str, Any],
+        time_value: float,
+    ) -> list[PredictedGraphAction]:
+        if self.candidate_source in {"graph_transitions_by_source", "graph_transitions_all_edges"}:
+            return self._candidate_actions_from_graph_transitions(payload, time_value)
+        return self._candidate_actions_from_prediction_candidates(payload, time_value)
+
+    def _candidate_actions_from_prediction_candidates(
         self,
         payload: dict[str, Any],
         time_value: float,
@@ -447,7 +495,8 @@ class ACGNapAdapter:
             return []
         actions: list[PredictedGraphAction] = []
         seen: set[tuple[str, str, str]] = set()
-        for candidate in prediction.get("transition_candidates") or []:
+        transition_candidates = prediction.get("transition_candidates") or []
+        for candidate_rank, candidate in enumerate(transition_candidates):
             relation = str(candidate.get("relation") or "").strip().lower()
             if not relation:
                 continue
@@ -466,15 +515,75 @@ class ACGNapAdapter:
                         source_node_id=str(source_node_id),
                         target_node_id=target_node_id,
                         relation_type=relation,
-                        metadata={
-                            "transition_id": str(candidate.get("transition_id") or ""),
-                            "description": self._compact_text(
-                                str(candidate.get("description") or ""),
-                                self.max_node_text_chars,
-                            ),
-                        },
+                        metadata=(
+                            {}
+                            if self.role_prompt_query_only
+                            else {
+                                "transition_id": str(candidate.get("transition_id") or ""),
+                                "candidate_rank": str(candidate_rank),
+                                "candidate_group_size": str(len(transition_candidates)),
+                                "description": self._compact_text(
+                                    str(candidate.get("description") or ""),
+                                    self.max_node_text_chars,
+                                ),
+                            }
+                        ),
                     )
                 )
+        return actions
+
+    def _candidate_actions_from_graph_transitions(
+        self,
+        payload: dict[str, Any],
+        time_value: float,
+    ) -> list[PredictedGraphAction]:
+        prediction = payload.get("prediction") or {}
+        source_node_id = prediction.get("source")
+        source_filter = str(source_node_id) if source_node_id is not None else None
+        actions: list[PredictedGraphAction] = []
+        seen: set[tuple[str, str, str]] = set()
+        transitions = payload.get("graph", {}).get("transitions") or []
+        for transition_rank, transition in enumerate(transitions):
+            relation = str(transition.get("type") or "").strip().lower()
+            if not relation:
+                continue
+            self._seen_relation_types.add(relation)
+            tail_nodes = [str(item) for item in transition.get("tail") or []]
+            head_nodes = [str(item) for item in transition.get("head") or []]
+            if self.candidate_source == "graph_transitions_by_source":
+                if source_filter is None:
+                    continue
+                tail_nodes = [node_id for node_id in tail_nodes if node_id == source_filter]
+            for tail_node_id in tail_nodes:
+                for target_node_id in head_nodes:
+                    key = (tail_node_id, relation, target_node_id)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    actions.append(
+                        PredictedGraphAction(
+                            action_type=GraphActionType.CREATE_EDGE,
+                            score=0.0,
+                            effective_time=time_value,
+                            source_node_id=tail_node_id,
+                            target_node_id=target_node_id,
+                            relation_type=relation,
+                            metadata=(
+                                {}
+                                if self.role_prompt_query_only
+                                else {
+                                    "transition_id": str(transition.get("id") or ""),
+                                    "candidate_rank": str(transition_rank),
+                                    "candidate_group_size": str(len(transitions)),
+                                    "description": self._compact_text(
+                                        str(transition.get("description") or ""),
+                                        self.max_node_text_chars,
+                                    ),
+                                    "candidate_source": self.candidate_source,
+                                }
+                            ),
+                        )
+                    )
         return actions
 
     def _prediction_context(
@@ -489,14 +598,18 @@ class ACGNapAdapter:
         graph_profile = self._compact_text(
             str(payload.get("graph", {}).get("profile") or ""),
             self.max_graph_profile_chars,
-        )
+        ) if not self.role_prompt_query_only else ""
         query_text = self._compact_text(
             str(prediction.get("query") or ""),
             self.max_node_text_chars,
         )
         source_output_text = ""
         nodes_payload = payload.get("graph", {}).get("nodes") or {}
-        if source_node_id is not None and str(source_node_id) in nodes_payload:
+        if (
+            self.include_latest_output_in_node_context
+            and source_node_id is not None
+            and str(source_node_id) in nodes_payload
+        ):
             source_output_text = self._node_context_text(
                 node_id=str(source_node_id),
                 node_payload=nodes_payload[str(source_node_id)],
@@ -507,17 +620,59 @@ class ACGNapAdapter:
                 ),
             )
         return GraphPredictionContext(
-            source_node_id=str(source_node_id) if source_node_id is not None else None,
+            source_node_id=(
+                None
+                if self.role_prompt_query_only
+                else str(source_node_id) if source_node_id is not None else None
+            ),
             query_text=query_text,
             graph_profile_text=graph_profile,
             source_output_text=source_output_text,
-            candidate_actions=[self._clone_action(action) for action in candidate_actions],
-            metadata={
-                "scenario": scenario,
-                "workflow_id": str(payload.get("workflow_id") or ""),
-                "sample_id": str(payload.get("sample_id") or ""),
-                "time_step": str(time_value),
-            },
+            runtime_text=self._runtime_text(
+                payload=payload,
+                scenario=scenario,
+                time_value=time_value,
+                candidate_actions=candidate_actions,
+            ) if not self.role_prompt_query_only else "",
+            candidate_actions=[] if self.role_prompt_query_only else [
+                self._clone_action(action) for action in candidate_actions
+            ],
+            metadata=(
+                {}
+                if self.role_prompt_query_only
+                else {
+                    "scenario": scenario,
+                    "workflow_id": str(payload.get("workflow_id") or ""),
+                    "sample_id": str(payload.get("sample_id") or ""),
+                    "time_step": str(time_value),
+                }
+            ),
+        )
+
+    def _runtime_text(
+        self,
+        payload: dict[str, Any],
+        scenario: str,
+        time_value: float,
+        candidate_actions: list[PredictedGraphAction],
+    ) -> str:
+        graph_payload = payload.get("graph", {}) or {}
+        nodes_payload = graph_payload.get("nodes") or {}
+        transitions = graph_payload.get("transitions") or []
+        prediction = payload.get("prediction") or {}
+        return "\n".join(
+            part
+            for part in (
+                f"scenario={scenario}",
+                f"time_step={time_value}",
+                f"workflow_id={payload.get('workflow_id') or ''}",
+                f"sample_id={payload.get('sample_id') or ''}",
+                f"source={prediction.get('source') or ''}",
+                f"node_count={len(nodes_payload)}",
+                f"workflow_transition_count={len(transitions)}",
+                f"candidate_count={len(candidate_actions)}",
+            )
+            if str(part).strip()
         )
 
     def _build_source_output_message(
@@ -579,6 +734,8 @@ class ACGNapAdapter:
         return message
 
     def _bootstrap_query_text(self, payload: dict[str, Any], scenario: str) -> str:
+        if self.role_prompt_query_only:
+            return ""
         workflow_id = str(payload.get("workflow_id") or scenario)
         graph_profile = self._compact_text(
             str(payload.get("graph", {}).get("profile") or ""),
@@ -704,16 +861,20 @@ class ACGNapAdapter:
         context = self._compact_text(
             str(node_payload.get("context") or ""),
             self.max_node_text_chars,
-        )
-        latest_output = self._compact_text(
-            str(node_payload.get("latest_output") or ""),
-            self.max_node_text_chars,
-        )
+        ) if self.include_node_runtime_context else ""
         parts = [f"role={role}", f"node={node_id}"]
         if profile:
             parts.append(f"profile={profile}")
         if context:
             parts.append(f"context={context}")
+        latest_output = (
+            self._compact_text(
+                str(node_payload.get("latest_output") or ""),
+                self.max_node_text_chars,
+            )
+            if self.include_latest_output_in_node_context
+            else ""
+        )
         if latest_output:
             parts.append(f"latest_output={latest_output}")
         return self._compact_text("; ".join(parts), self.max_node_text_chars)

@@ -371,6 +371,7 @@ class LLMApiGraphActionPredictor(nn.Module):
             "query_text": prediction_context.query_text,
             "graph_profile_text": prediction_context.graph_profile_text,
             "source_output_text": prediction_context.source_output_text,
+            "runtime_text": prediction_context.runtime_text,
             "candidate_actions": [
                 {
                     "action_type": action.action_type.value,

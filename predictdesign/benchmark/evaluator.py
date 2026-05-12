@@ -10,7 +10,7 @@ from pathlib import Path
 from ..config import ExperimentConfig, LLMApiConfig
 from ..experiment import PredictDesignSystem
 from ..prediction import GraphActionType, PredictedGraphAction
-from .trainer import BenchmarkTrainer
+from .trainer import BenchmarkTrainer, speculative_prediction_context
 from .types import BenchmarkEpisode
 
 
@@ -372,7 +372,9 @@ class BenchmarkEvaluator:
     ) -> _EvaluationTally:
         tally = _EvaluationTally.empty(self.hit_k_values)
         system.eval()
+        memory_snapshot = self._snapshot_few_shot_memory(system)
         for episode in episodes:
+            self._restore_few_shot_memory(system, memory_snapshot)
             system.initialize_graph(
                 nodes=episode.initial_nodes,
                 edges=episode.initial_edges,
@@ -381,9 +383,7 @@ class BenchmarkEvaluator:
                 structural_edge_metadata=episode.initial_structural_edge_metadata,
             )
             for step_index, step in enumerate(episode.steps):
-                self.trainer._apply_context_updates(system, step)
-                system.ingest_messages(step.messages)
-                self.trainer._apply_actions(system, step.observed_actions)
+                self.trainer.apply_observed_step(system, step)
                 available_future_steps = min(
                     system.config.prediction_horizon,
                     max(len(episode.steps) - step_index - 1, 0),
@@ -396,9 +396,11 @@ class BenchmarkEvaluator:
                     horizon=system.config.prediction_horizon,
                 )[:available_future_steps]
                 future_times = [time_value for time_value, _, _ in future_targets]
-                prediction_context_schedule = [
-                    prediction_context for _, _, prediction_context in future_targets
-                ]
+                prediction_context_schedule = self._prediction_context_schedule(
+                    current_context=step.prediction_context,
+                    future_targets=future_targets,
+                    config=system.config,
+                )
                 rollout = system.predictor.predict_subgraph_rollout(
                     temporal_graph=system.temporal_graph,
                     ctdg=system.ctdg,
@@ -436,7 +438,33 @@ class BenchmarkEvaluator:
                         predicted_actions,
                         future_union,
                     )
+        self._restore_few_shot_memory(system, memory_snapshot)
         return tally
+
+    def _prediction_context_schedule(
+        self,
+        current_context,
+        future_targets,
+        config: ExperimentConfig,
+    ):
+        if not config.use_speculative_rollout_context:
+            return [prediction_context for _, _, prediction_context in future_targets]
+        prefix_context = speculative_prediction_context(current_context)
+        return [
+            prefix_context
+            if config.reuse_current_context_for_speculative_rollout or index == 0
+            else None
+            for index, _ in enumerate(future_targets)
+        ]
+
+    def _snapshot_few_shot_memory(self, system: PredictDesignSystem):
+        if hasattr(system.predictor, "snapshot_few_shot_memory"):
+            return system.predictor.snapshot_few_shot_memory()
+        return None
+
+    def _restore_few_shot_memory(self, system: PredictDesignSystem, snapshot) -> None:
+        if snapshot is not None and hasattr(system.predictor, "restore_few_shot_memory"):
+            system.predictor.restore_few_shot_memory(snapshot)
 
     def _build_system(
         self,

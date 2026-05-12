@@ -1,458 +1,332 @@
 # PredictDesign
 
-PredictDesign 是一个面向多智能体协作过程的时序图预测实验框架。它把一次多智能体任务执行过程建模为连续时间动态图，学习在某个观察时刻之后应该新增、删除哪些协作边，或是否需要新增节点。
+PredictDesign is a framework for predicting temporal transitions in multi-agent systems. It represents a run as a dynamic collaboration graph and supports speculative prediction both when a query arrives and while the query is being executed.
 
-当前代码重点支持三类工作：
+The current focus is severe cold start. A scenario may have only dozens of queries, or about 100 at most, so the system cannot wait for a full scenario to finish before learning. The practical design is predict-first online learning: score with only visible information, then update memory after the true action has happened.
 
-- 图预测模型：TemporalGraph、CTDG 状态更新、Hybrid GNN / Relational Transformer、冷启动、候选动作重排、节点完成检测。
-- benchmark 适配：ACG-NAP、MultiAgentBench / MARBLE、本地 rich log。
-- 训练与评估：GNN holdout / candidate rerank、rich log MLP、LLM API predictor、批量 benchmark runner。
+## Core Protocol
 
-当前版本：`0.2.0`
+The strict rule is simple: do not use information that would not exist at prediction time.
 
-## 快速运行
+Forbidden inputs include current agent output, `latest_output`, `source_output_text`, `runtime_text`, old `Predict` entries, `prediction.transition_candidates`, the current label, future labels, and any context snapshot from a future event. Candidate sets must come from visible workflow/config/tool schema/graph structure, not from the label.
 
-### 1. 安装
+There are two different targets:
 
-要求 Python `>=3.11`。
+- `current_event`: predicts the current event's agent from previous history only. The current request text is not read because it usually contains `You are agentX`.
+- `next_agent`: assumes the currently executing `agent_id` is known and predicts the next agent. This is the protocol for query-internal speculative scheduling. It may use the current tool schema, current visible prompt, static agent profiles, visible graph edges, and already completed history/memory. When `--include-visible-agent-context` is enabled, it may also use the current event's `agents[*].context` snapshot as completed history, but never the next event's context or the current agent's not-yet-produced output.
+
+Graph structure is handled as follows:
+
+- If an explicit graph field exists, use it.
+- If not, infer collaboration edges from visible prompt/tool schema text such as `agent1 collaborates with agent3` and `target_agent_id.enum`.
+- After each prediction is scored, update online memory with the observed transition for later steps.
+
+## Setup
+
+Requires Python `>=3.11`.
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .[dev]
-```
-
-最小导入验证：
-
-```powershell
 python -c "import predictdesign; print('OK')"
 ```
 
-### 2. 跑离线示例
-
-这些示例默认使用本地 hash text encoder，不会下载 SentenceTransformer 模型。
+Useful checks:
 
 ```powershell
-python examples\minimal_demo.py
-python examples\rt_demo.py
-python examples\llm_api_predictor_example.py
+.venv\Scripts\python.exe tests\test_predictdesign.py
+.venv\Scripts\python.exe -m compileall predictdesign scripts tests
 ```
 
-示例说明已经集中在本文档的“运行示例”部分。
-
-### 3. 跑测试
+Clean generated caches:
 
 ```powershell
-python tests\test_predictdesign.py
+.venv\Scripts\python.exe scripts\cleanup_workspace.py --execute
 ```
 
-可选：
+## Raw Log Evaluation
+
+The current raw research logs live under `results/research`. They do not contain the old ACG-NAP fields `prediction`, `label`, or `transition_candidates`. The evaluator filters true raw event JSONL files by first-line event fields, so generated `*_timing.jsonl` files in the same directory are not accidentally re-used as input.
+
+Run the strict generic query-internal next-agent protocol on one scenario folder:
 
 ```powershell
-pytest
+.venv\Scripts\python.exe scripts\benchmark\run_new_log_cold_start.py `
+  --log-root results\research\coding `
+  --prediction-target next_agent `
+  --use-cross-file-memory `
+  --enable-adaptive-cross-file-prior `
+  --adaptive-cross-file-weight 40 `
+  --adaptive-cross-file-min-support 1 `
+  --adaptive-cross-file-min-confidence 0.4 `
+  --adaptive-cross-file-min-profile-stability 0.65 `
+  --enable-visible-order-prior `
+  --enable-cross-query-start-prior `
+  --enable-online-pair-calibration `
+  --pair-calibration-margin 1 `
+  --include-visible-agent-context `
+  --no-enable-online-reranker `
+  --no-enable-idf-profile-prior `
+  --report-path results\research\coding\next_agent_strict_generic_report.json `
+  --timing-path results\research\coding\next_agent_strict_generic_timing.jsonl `
+  --audit-path results\research\coding\next_agent_strict_generic_audit.json
 ```
 
-### 4. 清理缓存
+Use `--log-root results\research\research` and matching output paths to run the research scenario.
 
-预览：
+Run the base policy without cross-file priors or online reranking:
 
 ```powershell
-python scripts\cleanup_workspace.py
+.venv\Scripts\python.exe scripts\benchmark\run_new_log_cold_start.py `
+  --log-root results\research\coding `
+  --prediction-target next_agent `
+  --no-use-cross-file-memory `
+  --no-enable-visible-order-prior `
+  --no-enable-cross-query-start-prior `
+  --no-enable-online-reranker `
+  --report-path results\research\coding\next_agent_base_report.json `
+  --timing-path results\research\coding\next_agent_base_timing.jsonl `
+  --audit-path results\research\coding\next_agent_base_audit.json
 ```
 
-执行：
+Optional raw cross-file diagnostics can be run with `--cross-file-stat-weight`, but the strict generic protocol uses the adaptive prior instead. The adaptive prior trusts a completed-history transition only when the current source agent has enough support, confidence, and same-agent profile stability. It is still online: prediction happens first, then the true target updates memory.
+
+Latest local results on `results/research/coding` and `results/research/research`. The primary metric is strict hit@1 per scenario, not a weighted average. It counts only current `main_turn` events whose next event is actual agent work. `continuation`, `planner_summary`, `planner_continue`, and other scheduler recovery events are excluded from both the metric and predictive transition memory.
+
+| Scenario | Files | Steps | hit@1 | hit@2 | hit@3 | hit@5 | Mean latency | P95 latency |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| coding | 20 | 402 | 81.84% | 84.83% | 90.05% | 91.54% | 9.56 ms | 24.81 ms |
+| research | 20 | 200 | 69.00% | 88.50% | 95.50% | 99.00% | 13.63 ms | 43.14 ms |
+
+The current strict generic single-branch result does not satisfy the desired 80% hit@1 on every scenario. `coding` reaches the target; `research` does not. Reporting only the weighted mean would hide that failure, so the README keeps the per-scenario table as the primary result.
+
+The strongest useful signal is still top-k coverage: research reaches 88.50% hit@2 and 95.50% hit@3 without leakage. That is useful for multi-branch speculative execution, but it is not a substitute for hit@1 and should not be reported as single-action accuracy.
+
+The generic priors used by the strict protocol are:
+
+- Adaptive cross-file transition prior: uses only completed queries and is gated by support, confidence, and profile stability.
+- Visible-order prior: uses the current visible candidate order and source-turn count.
+- Cross-query start prior: reuses previous completed query starts and already observed early targets inside the current query.
+- Pair calibration: swaps top1/top2 only after the same top1/top2 pattern has already been observed earlier.
+- Visible context features: optionally uses current-event `agents[*].context` as completed history only.
+
+Leakage controls:
+
+- It scores only `main_turn` records.
+- It uses current `agent_id`, visible target candidates, static profiles, visible prompt text, inferred graph/tool schema, and already completed history. With `--include-visible-agent-context`, it also uses only the current event's already completed `agents[*].context` snapshot.
+- It updates weights only after the expected next agent has been scored and recorded.
+- It does not read current outputs, future events, old `prediction` fields, or `prediction.transition_candidates`.
+- It does not count scheduler recovery as model accuracy.
+
+## Other Benchmarks
+
+Strict ACG-NAP workflow/candidate policy:
 
 ```powershell
-python scripts\cleanup_workspace.py --execute
+.venv\Scripts\python.exe scripts\benchmark\run_acg_nap_workflow_policy.py --max-files-per-dataset 0
 ```
 
-## 项目目录
+MARBLE/vendor online cold-start simulation:
+
+```powershell
+.venv\Scripts\python.exe scripts\benchmark\run_vendor_online_cold_start.py `
+  --queries 60 `
+  --device cuda `
+  --require-cuda `
+  --speculative-steps 3 `
+  --latency-warmup-steps 3 `
+  --report-path results\vendor_online_cold_start_xai_60q_timing.json
+```
+
+Candidate-GNN strict zero-online evaluation:
+
+```powershell
+.venv\Scripts\python.exe scripts\training\train_acg_nap_candidate_gnn.py `
+  --device cuda `
+  --context-dim 16 `
+  --hidden-dim 32 `
+  --gnn-type gcn `
+  --state-updater gru `
+  --message-reduce-mode attention `
+  --train-epochs 0 `
+  --sentence-transformer-path __fallback_hash_encoder__ `
+  --max-files-per-dataset 0 `
+  --candidate-source graph_transitions_by_source `
+  --no-bootstrap-few-shot-memory `
+  --eval-memory-mode empty `
+  --progress-interval 0 `
+  --report-path results\acg_nap\candidate_graph_transitions_zero_online_full_0e_report.json `
+  --split-summary-path results\acg_nap\candidate_graph_transitions_zero_online_full_0e_split_summary.json `
+  --cleaning-summary-path results\acg_nap\candidate_graph_transitions_zero_online_full_0e_cleaning_summary.json `
+  --timing-path results\acg_nap\candidate_graph_transitions_zero_online_full_0e_timing.jsonl `
+  --audit-path results\acg_nap\candidate_graph_transitions_zero_online_full_0e_audit.json
+```
+
+Role/profile/query-only CUDA ablation:
+
+```powershell
+.venv\Scripts\python.exe scripts\training\train_acg_nap_candidate_gnn.py `
+  --device cuda `
+  --train-epochs 10 `
+  --sentence-transformer-path __fallback_hash_encoder__ `
+  --max-files-per-dataset 0 `
+  --role-prompt-query-only `
+  --gpu-only-learned-scoring `
+  --timing-path results\acg_nap\candidate_role_prompt_query_only_gpu_only_full_10e_timing.jsonl
+```
+
+`--gpu-only-learned-scoring` disables CPU-heavy zero-shot/few-shot text priors, so those results should not be mixed with workflow-policy results.
+
+## Timing
+
+Timing files are JSONL, one record per evaluated step. For `run_new_log_cold_start.py`, the main field is `prediction_time_ms`. For Candidate-GNN, timing also includes:
+
+- `prediction_score_time_ms`: scoring candidate actions.
+- `prediction_rank_time_ms`: sorting and hit@k calculation.
+- `observed_update_time_ms`: online update after prediction.
+- `online_step_overhead_ms`: prediction plus observed update.
+
+CUDA training scripts synchronize around GPU work before timing where needed, so asynchronous GPU execution does not make timing look falsely low.
+
+## Code Structure
 
 ```text
 PredictDesign/
-|- predictdesign/            # 可复用库代码
-|  |- benchmark/             # benchmark 适配、rich log、训练/评估封装
-|  |- gnn/                   # GNN/RT/hybrid 图骨干、冷启动、动作预测器
-|  |- llm/                   # OpenAI-compatible LLM predictor
-|  `- state_update/          # GRU / MDP 状态更新器
-|- examples/                 # 离线可运行示例
-|- scripts/                  # 命令行入口与运维脚本
-|  |- benchmark/             # benchmark runner 与 rich log 导出
-|  |- training/              # MLP/GNN 训练与评估
-|  `- ops/                   # 清理、监控、长任务 shell launcher
-|- tests/                    # 单元测试与回归测试
-|- data/                     # 本地数据目录，例如 data/acg_nap/
-|- results/                  # 实验输出、报告、归档结果
-|- docs/                     # 维护说明
-|- vendor/                   # 第三方 benchmark 代码
-|- README.md
-`- pyproject.toml
+|- predictdesign/             # Core package
+|  |- benchmark/              # Dataset adapters, evaluators, workflow policy
+|  |- gnn/                    # Graph encoders, predictors, priors, memory
+|  |- llm/                    # OpenAI-compatible LLM predictor
+|  |- state_update/           # GRU and MDP state updates
+|  |- config.py               # Experiment configuration
+|  |- experiment.py           # PredictDesignSystem orchestration
+|  |- prediction.py           # Prediction context and action types
+|  |- temporal_graph.py       # Temporal graph data model
+|- scripts/
+|  |- benchmark/              # Evaluation CLIs
+|  |- training/               # GNN and MLP training CLIs
+|  |- ops/                    # Cleanup and maintenance
+|- examples/                  # Minimal runnable examples
+|- tests/                     # Unit tests
+|- results/                   # Reports and checkpoints
 ```
 
-目录约定：
+The root `README.md` is the only documentation entry point. Subdirectories do not maintain separate READMEs.
 
-- `predictdesign/` 只放库代码，不写训练产物。
-- `examples/` 只放小型可运行示例，不放缓存和结果。
-- `scripts/benchmark/` 放 benchmark 运行与日志导出。
-- `scripts/training/` 放训练、评估、checkpoint/result 读取。
-- `scripts/ops/` 放清理、监控和长任务启动器。
-- `results/` 放报告、图表、运行输出。
-- `data/` 放本地数据，不提交大体积数据。
-- 路径常量集中在 [predictdesign/paths.py](predictdesign/paths.py)。
+## Module Notes
 
-## 代码框架
+`predictdesign.config`
 
-### 核心数据流
+Defines `ExperimentConfig` and `LLMApiConfig`, including hidden size, context size, GNN type, prediction horizon, cold-start priors, few-shot memory, candidate scoring, and LLM endpoint settings.
+
+`predictdesign.experiment`
+
+Defines `PredictDesignSystem`. It initializes graphs, injects messages, updates state, calls predictors, runs speculative rollouts, records observed actions, and maintains query-internal `active_prediction_context`.
+
+`predictdesign.prediction`
+
+Defines `GraphPredictionContext`, `PredictedGraphAction`, `GraphActionType`, `PredictionRollout`, and `PredictionSubgraphRollout`. `GraphPredictionContext.query_time_view()` strips fields that should not be visible at query time.
+
+`predictdesign.temporal_graph`
+
+Defines `TemporalNode`, `TemporalEdge`, and `TemporalGraph`, including temporal edges, structural edges, structural metadata, node context, graph context, and adjacency construction.
+
+`predictdesign.gnn`
+
+Contains graph layers, `GraphActionPredictor`, cold-start initialization, cold-start action prior, and online few-shot transition memory. The predictor can rank supplied candidates, score graph actions, and apply predicted actions to temporary rollout graphs.
+
+`predictdesign.benchmark`
+
+Contains `BenchmarkEpisode`, `EpisodeStep`, `BenchmarkTrainer`, `BenchmarkEvaluator`, ACG-NAP adapters, MultiAgentBench/MARBLE adapters, rich-log utilities, and strict workflow/candidate policies.
+
+`predictdesign.llm`
+
+Contains `LLMApiGraphActionPredictor`, which formats graph state, candidate actions, prediction context, and rollout history into an OpenAI-compatible prompt and parses JSON actions. Examples default to fake completions unless a real endpoint is requested.
+
+## Examples
+
+```powershell
+.venv\Scripts\python.exe examples\minimal_demo.py
+.venv\Scripts\python.exe examples\rt_demo.py
+.venv\Scripts\python.exe examples\llm_api_predictor_example.py
+```
+
+- `examples/minimal_demo.py`: smallest hybrid workflow with structural metadata and candidate ranking.
+- `examples/rt_demo.py`: compares relational-transformer and hybrid GNN behavior with a tiny supervised update.
+- `examples/llm_api_predictor_example.py`: shows the LLM predictor with offline fake completion by default.
+
+## Query-Level And In-Query Prediction
+
+At query arrival, create a query-time view and predict before writing current outputs:
+
+```python
+from predictdesign import GraphPredictionContext
+
+query_context = GraphPredictionContext(
+    source_node_id="planner",
+    query_text=query_text,
+    candidate_actions=candidate_actions,
+).query_time_view()
+
+rollout = system.predict_speculative_action_sets(
+    observation_time=current_time,
+    steps=system.config.prediction_horizon,
+    prediction_context=query_context,
+)
+```
+
+During query execution, recompute speculative rollout only with runtime messages or observed actions that are already visible:
+
+```python
+rollout = system.process_query_runtime_update(
+    observation_time=current_time,
+    prediction_context=query_context,
+    messages=runtime_messages,
+    context_updates={"coder": coder_context_vector},
+    context_text_updates={"coder": "implementation complete"},
+    observed_actions=observed_actions,
+    steps=system.config.prediction_horizon,
+)
+```
+
+Do not place the final output of the currently predicted step into this context before scoring.
+
+## SentenceTransformer Fallback
+
+Use the fallback sentinel to avoid HuggingFace HEAD retry warnings for intentionally missing test models:
 
 ```text
-raw benchmark logs / local records
-        |
-        v
-BenchmarkEpisode / EpisodeStep
-        |
-        v
-PredictDesignSystem.initialize_graph(...)
-        |
-        +--> TemporalGraph: nodes, temporal edges, structural edges, metadata
-        +--> CTDG: continuous-time node states and message history
-        |
-        v
-GraphActionPredictor / LLMApiGraphActionPredictor
-        |
-        v
-PredictedGraphAction / PredictionRollout / PredictionSubgraphRollout
-        |
-        v
-BenchmarkTrainer / BenchmarkEvaluator / scripts
+__missing_sentence_transformer_model__
 ```
 
-### 关键模块
+For fully local hash encoding, use:
 
-- [predictdesign/temporal_graph.py](predictdesign/temporal_graph.py)
-  定义 `TemporalNode`、`TemporalEdge`、`TemporalGraph`。图中同时保存时序边、结构边、结构边 metadata 和图级上下文文本。
-
-- [predictdesign/ctdg.py](predictdesign/ctdg.py)
-  连续时间动态图状态容器，保存节点 hidden state、message history 和 state history。
-
-- [predictdesign/messages.py](predictdesign/messages.py)
-  定义 query/completion message。message 会被编码后用于更新 CTDG 节点状态。
-
-- [predictdesign/encoders.py](predictdesign/encoders.py)
-  文本、角色、时间、节点和消息编码器。SentenceTransformer 不可用或使用 fallback sentinel 时，会走本地 hash encoder。
-
-- [predictdesign/prediction.py](predictdesign/prediction.py)
-  定义 `GraphActionType`、`PredictedGraphAction`、`GraphPredictionContext`、rollout 结果对象。
-
-- [predictdesign/experiment.py](predictdesign/experiment.py)
-  顶层 `PredictDesignSystem`，负责组装图、CTDG、state updater、predictor 和 query parser。
-
-- [predictdesign/gnn/layers.py](predictdesign/gnn/layers.py)
-  GCN、GraphSAGE、GAT、Relational Transformer 和 `HybridGraphLayer`。
-
-- [predictdesign/gnn/predictor.py](predictdesign/gnn/predictor.py)
-  图动作预测器。它负责图编码、候选动作打分、action type/count 打分、completion-aware 调整、zero-shot/few-shot 先验融合和 rollout apply。
-
-- [predictdesign/gnn/cold_start_prior.py](predictdesign/gnn/cold_start_prior.py)
-  零训练动作先验。它用 query、source output、节点文本、角色、结构边 metadata、candidate description 做确定性打分。
-
-- [predictdesign/gnn/few_shot_memory.py](predictdesign/gnn/few_shot_memory.py)
-  低样本 transition memory。它把少量已标注 episode 转成非参数案例库，按 source role、target role、relation 和文本 token overlap 给候选动作加分。
-
-- [predictdesign/benchmark/](predictdesign/benchmark)
-  负责把不同数据源变成统一的 `BenchmarkEpisode`，并提供训练、评估、rich log 输出。
-
-### 训练样本结构
-
-`BenchmarkEpisode` 是训练/评估的主样本：
-
-- `initial_nodes`：初始节点。
-- `initial_edges`：初始时序边。
-- `initial_structural_edges`：workflow 或 benchmark 给出的结构边。
-- `initial_graph_context_text`：图级任务描述。
-- `initial_structural_edge_metadata`：transition relation、transition id、description。
-- `steps`：按时间排列的 `EpisodeStep`。
-
-`EpisodeStep` 包含：
-
-- `observation_time`：观察时刻。
-- `messages`：当前时刻被 CTDG ingest 的消息。
-- `observed_actions`：真实发生的图动作。
-- `valid_next_actions`：下一步监督动作，支持 parallel valid actions。
-- `candidate_actions`：候选动作列表。
-- `context_updates` / `context_text_updates`：节点上下文更新。
-- `prediction_context`：当前 source/query/profile/latest output/candidate transition 等条件信息。
-
-## 当前推荐模型
-
-默认推荐强模型是：
-
-```python
-ExperimentConfig(
-    gnn_type="hybrid",
-    use_zero_shot_action_priors=True,
-    use_few_shot_transition_memory=True,
-    use_context_conditioning=True,
-    use_candidate_cross_encoder=True,
-    use_structural_candidate_priors=True,
-)
+```text
+__fallback_hash_encoder__
 ```
 
-`hybrid` 每层融合四种图视角：
-
-- GCN：稳定局部聚合。
-- GraphSAGE：自身状态与邻居状态对比。
-- GAT：可学习邻居注意力。
-- Relational Transformer：角色注意力、结构邻居注意力、全局注意力和 gated MLP。
-
-预测器额外使用：
-
-- 上下文条件化：`GraphPredictionContext` 会门控更新节点 embedding、图 embedding 和 action type logits。
-- 零训练冷启动先验：在 GNN 尚未训练或样本很少时，先用 source、query、节点文本、结构边、transition id、relation、description 做确定性动作先验。
-- Few-shot transition memory：每个场景只有几十到约 100 条 query 时，先把这些 query/label 变成非参数原型记忆，不依赖梯度训练即可参与排序。
-- 候选 cross-encoder：对 source/target/graph/context/text/relation/edge 特征联合打分。
-- 结构先验：结构 transition metadata 与候选动作匹配时会加分。
-- 冷启动初始化：已有节点不再从纯零 state 开始，而是融合 role、节点文本、图级 profile 和结构边描述。
-
-这些能力是模型能力层面的增强；实际收益仍应通过 holdout 或交叉验证确认。
-
-## 低数据冷启动策略
-
-如果一个场景最多只有约 100 条 query，不建议把“训练一个 GNN”当成第一路径。这个数据量更适合做系统级快速适配：先让规则先验和案例记忆工作，GNN/cross-encoder 只在后续数据变多时学习 residual。
-
-纯 GNN 或 online-learning 在这个设置里有几个现实困难：
-
-- 需要监督数据训练，随机初始化阶段的边分数和 relation 分数不稳定。
-- 在线学习需要高质量即时反馈；如果反馈稀疏、延迟或噪声大，短期收益可能很差。
-- 每个场景只有约 100 条 query 时，train/valid split 很小，容易把场景噪声学成模式。
-
-当前实现采用“zero-shot prior + few-shot memory 优先，GNN 学 residual”的策略：
-
-- `ColdStartActionPriorScorer` 是非参数 scorer，不需要训练。它会用当前 `GraphPredictionContext`、workflow 结构边、transition metadata、节点角色/文本和候选描述计算零训练先验分数。
-- `FewShotTransitionMemory` 是非参数案例库。`BenchmarkTrainer(..., epochs=0).fit(system, train_episodes)` 会跳过梯度训练，但仍然把 episode 里的真实 `CREATE_EDGE` transition 写入 memory。
-- 有 `prediction.transition_candidates` 时，候选分数由 `learned_candidate_score_weight * learned_score + zero_shot_prior_weight * prior_score + few_shot_memory_weight * memory_score` 组成。
-- 没有候选集时，zero-shot prior 和 few-shot edge prior 会加到完整 create-edge score matrix 上，让 source row、结构边、历史相似 source/target role 先被抬高。
-- `zero_shot_action_type_boost` 和 candidate action type boost 会避免冷启动时过早退化成 `no_op`。
-
-100 条 query/场景的推荐起步配置：
-
-```python
-ExperimentConfig(
-    use_zero_shot_action_priors=True,
-    use_few_shot_transition_memory=True,
-    zero_shot_prior_weight=1.5,
-    few_shot_memory_weight=1.25,
-    few_shot_memory_max_examples=512,
-    zero_shot_action_type_boost=1.0,
-    learned_candidate_score_weight=0.0,
-)
-```
-
-最小工作流：
-
-```python
-from predictdesign import BenchmarkTrainer, ExperimentConfig, PredictDesignSystem
-
-config = ExperimentConfig(
-    gnn_type="hybrid",
-    use_zero_shot_action_priors=True,
-    use_few_shot_transition_memory=True,
-    learned_candidate_score_weight=0.0,
-)
-system = PredictDesignSystem(config=config)
-
-# train_episodes 可以只有几十到约 100 条 query 转出来的 BenchmarkEpisode。
-BenchmarkTrainer(epochs=0).fit(system, train_episodes)
-
-# 此时没有做梯度训练，但 few-shot memory 已经可用于 predict/evaluate。
-```
-
-等每个场景积累更多稳定 holdout 数据后，再做两步增强：
-
-- 把 `learned_candidate_score_weight` 调回 `1.0`，让 learned score 参与候选排序。
-- 把 `BenchmarkTrainer(epochs=0)` 改成少量 epoch，例如 `epochs=3` 到 `epochs=10`，让 hybrid GNN / candidate cross-encoder 只学习先验和记忆覆盖不了的 residual。
-
-## SentenceTransformer fallback
-
-如果 `sentence_transformer_path` 或 rich log MLP 的 `sentence_transformer_model` 使用下面前缀，代码会直接启用本地 hash text encoder，不会访问 HuggingFace：
-
-- `__missing_*`
-- `__fallback_*`
-- `fallback_hash_*`
-
-这样可以避免缺失测试模型触发短暂 HuggingFace HEAD retry warning，也保证 examples 和测试能离线运行。
-
-示例：
-
-```python
-config = ExperimentConfig(
-    sentence_transformer_path="__fallback_sentence_transformer__",
-)
-```
-
-真实实验建议传入可访问的模型名或本地模型路径，例如：
+For real experiments, pass an accessible local path or model name:
 
 ```powershell
-python scripts\training\train_acg_nap_gnn.py --sentence-transformer-path C:\models\all-MiniLM-L6-v2
+.venv\Scripts\python.exe scripts\training\train_acg_nap_gnn.py `
+  --sentence-transformer-path C:\models\all-MiniLM-L6-v2
 ```
 
-## 运行示例
+## Leakage Checklist
 
-### Minimal Hybrid Demo
+- Predict first, then update online memory with the observed action.
+- Do not read current outputs, future request/output, old `Predict` fields, or `prediction.transition_candidates`.
+- Do not fill a missing candidate set from `ground_truth_action` unless explicitly running an oracle upper bound.
+- Treat context snapshots carefully. The current event's `agents[*].context` can be used only as already completed history when `--include-visible-agent-context` is explicitly enabled. Future context snapshots, current output text, and post-label updates are forbidden.
+- For `next_agent`, current `agent_id` is allowed because the executing agent is known.
+- For raw logs without an explicit graph, inferred graph edges from visible prompt/tool schema are allowed and must be reported as inferred.
+
+## Maintenance
 
 ```powershell
-python examples\minimal_demo.py
+.venv\Scripts\python.exe tests\test_predictdesign.py
+.venv\Scripts\python.exe -m compileall predictdesign scripts tests
+.venv\Scripts\python.exe scripts\cleanup_workspace.py --execute
 ```
 
-演示内容：
-
-- 初始化三节点 workflow。
-- 注入图级上下文和结构边 metadata。
-- 构造 `GraphPredictionContext`。
-- 使用 `hybrid` + candidate cross-encoder 输出候选动作排序。
-
-### RT / Hybrid 对比
-
-```powershell
-python examples\rt_demo.py
-```
-
-演示内容：
-
-- 构建同一个 toy episode。
-- 分别使用 `relational_transformer` 和 `hybrid` 预测。
-- 跑一个极小 supervised update，展示 trainer API。
-
-### LLM API Predictor
-
-默认离线假 completion：
-
-```powershell
-python examples\llm_api_predictor_example.py
-```
-
-真实 OpenAI-compatible endpoint：
-
-```powershell
-$env:PREDICTDESIGN_LLM_API_KEY="..."
-$env:PREDICTDESIGN_LLM_BASE_URL="https://api.siliconflow.cn/v1"
-$env:PREDICTDESIGN_LLM_MODEL="Qwen/Qwen2.5-Coder-32B-Instruct"
-python examples\llm_api_predictor_example.py --real
-```
-
-## 训练和评估
-
-### ACG-NAP GNN holdout
-
-查看参数：
-
-```powershell
-python scripts\training\train_acg_nap_gnn.py --help
-```
-
-推荐强模型入口：
-
-```powershell
-python scripts\training\train_acg_nap_gnn.py --gnn-types hybrid
-```
-
-常用参数：
-
-- `--acg-nap-root`：ACG-NAP 数据目录，默认来自 `predictdesign.paths.ACG_NAP_ROOT`。
-- `--train-epochs`：训练 epoch。
-- `--train-fraction`：holdout 训练比例。
-- `--sentence-transformer-path`：真实模型名、本地路径或 fallback sentinel。
-- `--max-files-per-dataset`：调试时限制每个 dataset 的文件数，`0` 表示不限制。
-
-### ACG-NAP candidate rerank
-
-```powershell
-python scripts\training\train_acg_nap_candidate_gnn.py --help
-python scripts\training\train_acg_nap_candidate_gnn.py --gnn-type hybrid
-```
-
-该脚本把 `prediction.transition_candidates` 当成当前步候选集，训练候选排序分数。它会使用 source、query、profile、latest output 和 candidate description。
-
-### Rich Log MLP
-
-```powershell
-python scripts\train_rich_log_mlp.py --help
-```
-
-用途：
-
-- 从 rich log 中抽取 query、node outputs、graph structure。
-- 比较不同信息组合的 MLP 分类效果。
-- 结果输出到 `results/`。
-
-### MultiAgentBench / MARBLE
-
-```powershell
-python scripts\benchmark\run_multiagentbench_eval.py --help
-python scripts\benchmark\run_marble_hitk_benchmark.py --help
-```
-
-`scripts/benchmark/` 下是主入口；根目录 `scripts/run_*.py` 是兼容包装。
-
-## 脚本目录
-
-脚本说明已经集中在本文档的“脚本目录”部分。
-
-常用入口：
-
-```powershell
-python scripts\run_parallel_api_rich_logs.py --help
-python scripts\run_marble_hitk_benchmark.py --help
-python scripts\train_rich_log_mlp.py --help
-python scripts\train_parallel_api_gnn.py --help
-python scripts\cleanup_workspace.py --help
-python scripts\monitor_full_runs.py --help
-```
-
-按职责使用新路径：
-
-```powershell
-python scripts\benchmark\export_rich_log.py --help
-python scripts\benchmark\run_multiagentbench_eval.py --help
-python scripts\training\train_acg_nap_gnn.py --help
-python scripts\training\train_existing_results_gnn.py --help
-python scripts\ops\cleanup_workspace.py --help
-```
-
-## 输出和缓存
-
-默认约定：
-
-- 运行报告、CSV、图片、checkpoint 写入 `results/`。
-- 本地输入数据放入 `data/`。
-- 第三方 benchmark 代码放入 `vendor/`。
-- 不要把 `__pycache__`、`.pytest_cache`、临时结果、模型产物写入 `predictdesign/`、`examples/` 或 `tests/`。
-
-清理命令：
-
-```powershell
-python scripts\cleanup_workspace.py --execute
-```
-
-归档旧 smoke 结果：
-
-```powershell
-python scripts\cleanup_workspace.py --execute --archive-smoke-results
-```
-
-## 开发建议
-
-- 新增库能力先放在 `predictdesign/`，再从 scripts 或 examples 调用。
-- 新增 benchmark 数据适配器放在 `predictdesign/benchmark/`。
-- 新增训练脚本放在 `scripts/training/`。
-- 新增 benchmark runner 放在 `scripts/benchmark/`。
-- 新增清理、监控、shell 启动器放在 `scripts/ops/`。
-- 新增示例需要能离线运行，优先使用 fallback text encoder 或 fake completion。
-- 项目说明集中维护在根目录 `README.md`；不要在子目录新增分散的 README。
-- 修改路径时同步检查 [predictdesign/paths.py](predictdesign/paths.py)。
-- 改动模型行为后至少运行：
-
-```powershell
-python -m compileall predictdesign examples scripts tests
-python tests\test_predictdesign.py
-python examples\minimal_demo.py
-```
+Keep caches, temporary reports, and checkpoints out of source directories. Put reports and checkpoints under `results/`, local datasets under `data/`, and third-party benchmarks under `vendor/`.

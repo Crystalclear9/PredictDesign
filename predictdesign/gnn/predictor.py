@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import torch
 import torch.nn.functional as F
@@ -48,6 +48,7 @@ class ActionScoreBundle:
     candidate_scores: torch.Tensor | None = None
     candidate_prior_scores: torch.Tensor | None = None
     candidate_few_shot_scores: torch.Tensor | None = None
+    runtime_directed_message_count: int = 0
 
 
 class GraphActionPredictor(nn.Module):
@@ -191,16 +192,26 @@ class GraphActionPredictor(nn.Module):
         target_role: str,
         relation_type: str,
         text: str,
+        source_node_id: str = "",
+        target_node_id: str = "",
     ) -> None:
         self.few_shot_memory.add(
             source_role=source_role,
             target_role=target_role,
             relation_type=relation_type,
             text=text,
+            source_node_id=source_node_id,
+            target_node_id=target_node_id,
         )
 
     def few_shot_memory_size(self) -> int:
         return len(self.few_shot_memory)
+
+    def snapshot_few_shot_memory(self):
+        return self.few_shot_memory.snapshot()
+
+    def restore_few_shot_memory(self, snapshot) -> None:
+        self.few_shot_memory.restore(snapshot)
 
     def initialize_ctdg_states(
         self,
@@ -243,6 +254,7 @@ class GraphActionPredictor(nn.Module):
         temporal_graph: TemporalGraph,
         ctdg: ContinuousTimeDynamicGraph,
         observation_time: float,
+        node_feature_cache: tuple[list[str], torch.Tensor] | None = None,
     ) -> tuple[list[str], torch.Tensor, torch.Tensor, torch.Tensor]:
         node_order = sorted(temporal_graph.nodes)
         if not node_order:
@@ -263,16 +275,22 @@ class GraphActionPredictor(nn.Module):
                     device=self.device,
                 )
             return node_order, empty_matrix, empty_edge_features, empty_embeddings
-        features = torch.stack(
-            [
-                self.node_feature_encoder(
-                    temporal_graph.nodes[node_id],
-                    ctdg.get_state(node_id).to(self.device),
-                )
-                for node_id in node_order
-            ],
-            dim=0,
-        )
+        features = None
+        if node_feature_cache is not None:
+            cached_order, cached_features = node_feature_cache
+            if list(cached_order) == node_order:
+                features = cached_features.to(self.device)
+        if features is None:
+            features = torch.stack(
+                [
+                    self.node_feature_encoder(
+                        temporal_graph.nodes[node_id],
+                        ctdg.get_state(node_id).to(self.device),
+                    )
+                    for node_id in node_order
+                ],
+                dim=0,
+            )
         active_adjacency = temporal_graph.adjacency_matrix(
             time_value=observation_time,
             node_order=node_order,
@@ -307,6 +325,30 @@ class GraphActionPredictor(nn.Module):
             features, message_passing_adjacency, edge_features, role_indices=role_indices,
         )
         return node_order, active_adjacency, edge_features, encoded
+
+    def build_node_feature_cache(
+        self,
+        temporal_graph: TemporalGraph,
+        ctdg: ContinuousTimeDynamicGraph,
+    ) -> tuple[list[str], torch.Tensor]:
+        node_order = sorted(temporal_graph.nodes)
+        if not node_order:
+            return node_order, torch.zeros(
+                (0, self.config.hidden_dim),
+                dtype=torch.float32,
+                device=self.device,
+            )
+        features = torch.stack(
+            [
+                self.node_feature_encoder(
+                    temporal_graph.nodes[node_id],
+                    ctdg.get_state(node_id).to(self.device),
+                )
+                for node_id in node_order
+            ],
+            dim=0,
+        )
+        return node_order, features
 
     def _regularize_node_features(self, features: torch.Tensor) -> torch.Tensor:
         if features.numel() == 0:
@@ -400,8 +442,10 @@ class GraphActionPredictor(nn.Module):
             effective_time=observation_time,
         )
         candidates = self._candidate_actions(score_bundle, observation_time, action_logits)
+        best_non_noop_logit = float(action_logits[:3].max().item())
+        if float(action_logits[3].item()) >= best_non_noop_logit:
+            return [no_op_action]
         if predicted_count <= 0:
-            best_non_noop_logit = float(action_logits[:3].max().item())
             if candidates and best_non_noop_logit > float(action_logits[3].item()):
                 predicted_count = 1
             else:
@@ -426,11 +470,18 @@ class GraphActionPredictor(nn.Module):
         ctdg: ContinuousTimeDynamicGraph,
         observation_time: float,
         prediction_context: GraphPredictionContext | None = None,
+        node_feature_cache: tuple[list[str], torch.Tensor] | None = None,
     ) -> ActionScoreBundle:
+        prediction_context = self._runtime_enriched_prediction_context(
+            temporal_graph=temporal_graph,
+            observation_time=observation_time,
+            prediction_context=prediction_context,
+        )
         node_order, adjacency, edge_features, node_embeddings = self.encode_graph(
             temporal_graph=temporal_graph,
             ctdg=ctdg,
             observation_time=observation_time,
+            node_feature_cache=node_feature_cache,
         )
         # Number of actual nodes (cold start may add virtual embeddings)
         n_actual = len(node_order)
@@ -504,13 +555,48 @@ class GraphActionPredictor(nn.Module):
             temporal_graph=temporal_graph,
             node_order=node_order,
             create_scores=create_scores,
+            create_valid_mask=create_valid_mask,
             relation_logits=relation_logits,
             edge_features=edge_features,
             node_embeddings=actual_embeddings,
             graph_embedding=graph_embedding,
             context_embedding=context_embedding,
         )
-
+        (
+            runtime_message_actions,
+            runtime_message_scores,
+        ) = self._score_runtime_message_candidates(
+            ctdg=ctdg,
+            temporal_graph=temporal_graph,
+            observation_time=observation_time,
+            device=graph_embedding.device,
+            dtype=graph_embedding.dtype,
+        )
+        if runtime_message_actions:
+            candidate_actions = [*runtime_message_actions, *(candidate_actions or [])]
+            candidate_scores = self._concat_optional_scores(
+                runtime_message_scores,
+                candidate_scores,
+            )
+            runtime_prior_scores = torch.full(
+                (len(runtime_message_actions),),
+                self.config.runtime_message_candidate_score,
+                dtype=graph_embedding.dtype,
+                device=graph_embedding.device,
+            )
+            candidate_prior_scores = self._concat_optional_scores(
+                runtime_prior_scores,
+                candidate_prior_scores,
+            )
+            runtime_few_shot_scores = torch.zeros(
+                len(runtime_message_actions),
+                dtype=graph_embedding.dtype,
+                device=graph_embedding.device,
+            )
+            candidate_few_shot_scores = self._concat_optional_scores(
+                runtime_few_shot_scores,
+                candidate_few_shot_scores,
+            )
         count_logits = self.action_count_head(graph_embedding)
         if candidate_actions:
             count_logits = count_logits.clone()
@@ -545,6 +631,7 @@ class GraphActionPredictor(nn.Module):
             candidate_scores=candidate_scores,
             candidate_prior_scores=candidate_prior_scores,
             candidate_few_shot_scores=candidate_few_shot_scores,
+            runtime_directed_message_count=len(runtime_message_actions),
         )
 
     def _apply_prediction_context_bias(
@@ -658,12 +745,75 @@ class GraphActionPredictor(nn.Module):
             return None
         return self.node_feature_encoder.text_encoder(context_text, device=self.device)
 
+    def _runtime_enriched_prediction_context(
+        self,
+        temporal_graph: TemporalGraph,
+        observation_time: float,
+        prediction_context: GraphPredictionContext | None,
+    ) -> GraphPredictionContext | None:
+        if prediction_context is None or not self.config.use_runtime_context_features:
+            return prediction_context
+        runtime_text = self._runtime_context_text(
+            temporal_graph=temporal_graph,
+            observation_time=observation_time,
+            prediction_context=prediction_context,
+        )
+        if not runtime_text:
+            return prediction_context
+        existing = str(prediction_context.runtime_text or "").strip()
+        merged_runtime_text = "\n".join(
+            part for part in (existing, runtime_text) if part
+        )
+        if merged_runtime_text == existing:
+            return prediction_context
+        return replace(prediction_context, runtime_text=merged_runtime_text)
+
+    def _runtime_context_text(
+        self,
+        temporal_graph: TemporalGraph,
+        observation_time: float,
+        prediction_context: GraphPredictionContext,
+    ) -> str:
+        parts = [
+            f"observation_time={observation_time}",
+            f"node_count={len(temporal_graph.nodes)}",
+            f"active_edge_count={len(temporal_graph.active_edges(observation_time))}",
+            f"structural_edge_count={len(temporal_graph.structural_edges)}",
+            f"few_shot_memory_size={len(self.few_shot_memory)}",
+            f"candidate_count={len(prediction_context.candidate_actions)}",
+        ]
+        if prediction_context.source_node_id in temporal_graph.nodes:
+            source = temporal_graph.nodes[str(prediction_context.source_node_id)]
+            parts.append(f"source_role={source.role}")
+            if source.context_text:
+                parts.append(f"source_context={source.context_text}")
+        metadata_parts = [
+            f"{key}={value}"
+            for key, value in sorted(prediction_context.metadata.items())
+            if str(value).strip()
+        ]
+        if metadata_parts:
+            parts.append("metadata " + " ".join(metadata_parts))
+        max_edges = self.config.runtime_context_max_edges
+        if max_edges > 0:
+            edge_texts: list[str] = []
+            for edge in temporal_graph.active_edges(observation_time)[-max_edges:]:
+                if edge.source_node_id not in temporal_graph.nodes or edge.target_node_id not in temporal_graph.nodes:
+                    continue
+                source = temporal_graph.nodes[edge.source_node_id]
+                target = temporal_graph.nodes[edge.target_node_id]
+                edge_texts.append(f"{source.role}:{edge.source_node_id}->{target.role}:{edge.target_node_id}")
+            if edge_texts:
+                parts.append("recent_active_edges=" + " ".join(edge_texts))
+        return "\n".join(part for part in parts if str(part).strip())
+
     def _score_prediction_context_candidates(
         self,
         prediction_context: GraphPredictionContext | None,
         temporal_graph: TemporalGraph,
         node_order: list[str],
         create_scores: torch.Tensor,
+        create_valid_mask: torch.Tensor,
         relation_logits: torch.Tensor,
         edge_features: torch.Tensor,
         node_embeddings: torch.Tensor,
@@ -703,6 +853,8 @@ class GraphActionPredictor(nn.Module):
             row = node_order.index(action.source_node_id)
             col = node_order.index(action.target_node_id)
             if not self.config.allow_self_loop_prediction and row == col:
+                continue
+            if not bool(create_valid_mask[row, col].item()):
                 continue
             relation_idx = relation_index[action.relation_type]
             learned_score = create_scores[row, col] + relation_logits[row, col, relation_idx]
@@ -916,17 +1068,145 @@ class GraphActionPredictor(nn.Module):
             )
         if self._has_cold_start_create_signal(score_bundle):
             create_logit = create_logit + self.config.zero_shot_action_type_boost
+        add_node_logit = (
+            torch.logsumexp(score_bundle.role_logits, dim=0)
+            if self.config.enable_add_node_prediction and score_bundle.role_logits.numel() > 0
+            else create_logit.new_tensor(float("-inf"))
+        )
         logits = torch.stack(
             [
-                create_logit,
-                self._pooled_edge_logit(score_bundle.remove_scores, score_bundle.remove_valid_mask),
-                torch.logsumexp(score_bundle.role_logits, dim=0),
-                score_bundle.no_op_logit,
+                create_logit + self.config.create_action_bias,
+                self._pooled_edge_logit(score_bundle.remove_scores, score_bundle.remove_valid_mask)
+                + self.config.remove_action_bias,
+                add_node_logit + self.config.add_node_action_bias,
+                score_bundle.no_op_logit + self.config.no_op_action_bias,
             ]
         )
         if score_bundle.action_type_context_logits is not None:
             logits = logits + score_bundle.action_type_context_logits
+        if (
+            score_bundle.runtime_directed_message_count <= 0
+            and not score_bundle.candidate_actions
+            and self.config.no_directed_message_noop_bias > 0
+        ):
+            logits = logits.clone()
+            logits[3] = logits[3] + self.config.no_directed_message_noop_bias
         return logits
+
+    def _score_runtime_message_candidates(
+        self,
+        *,
+        ctdg: ContinuousTimeDynamicGraph,
+        temporal_graph: TemporalGraph,
+        observation_time: float,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> tuple[list[PredictedGraphAction], torch.Tensor]:
+        if self.config.runtime_message_candidate_score <= 0:
+            return [], torch.zeros(0, dtype=dtype, device=device)
+        actions: list[PredictedGraphAction] = []
+        scores: list[float] = []
+        seen: set[tuple[str, str, str]] = set()
+        tolerance = self.config.runtime_message_time_tolerance
+        recent_messages = sorted(
+            (
+                message
+                for message in ctdg.message_history
+                if self._message_visible_for_prediction(
+                    message=message,
+                    observation_time=observation_time,
+                    tolerance=tolerance,
+                )
+            ),
+            key=lambda message: float(message.time),
+        )
+        for order_index, message in enumerate(recent_messages):
+            if message.source_node_id is None or message.target_node_id is None:
+                continue
+            if message.source_node_id == message.target_node_id:
+                continue
+            if message.source_node_id not in temporal_graph.nodes:
+                continue
+            if message.target_node_id not in temporal_graph.nodes:
+                continue
+            relation_type = self._message_relation_type(message)
+            key = (message.source_node_id, message.target_node_id, relation_type)
+            if key in seen:
+                continue
+            seen.add(key)
+            actions.append(
+                PredictedGraphAction(
+                    action_type=GraphActionType.CREATE_EDGE,
+                    score=self.config.runtime_message_candidate_score,
+                    effective_time=observation_time,
+                    source_node_id=message.source_node_id,
+                    target_node_id=message.target_node_id,
+                    relation_type=relation_type,
+                    metadata={
+                        "source": "runtime_message",
+                        "message_time": str(message.time),
+                        "raw_text": str(message.metadata.get("raw_text", "")),
+                    },
+                )
+            )
+            scores.append(
+                self.config.runtime_message_candidate_score
+                - (0.01 * order_index)
+                - abs(float(message.time) - float(observation_time))
+            )
+        return actions, torch.tensor(scores, dtype=dtype, device=device)
+
+    def _message_visible_for_prediction(
+        self,
+        *,
+        message: Message,
+        observation_time: float,
+        tolerance: float,
+    ) -> bool:
+        message_time = float(message.time)
+        observation_time = float(observation_time)
+        if message_time < observation_time:
+            return observation_time - message_time <= tolerance
+        if message_time == observation_time:
+            if self.config.allow_same_time_runtime_messages:
+                return True
+            return bool(
+                message.metadata.get("available_for_prediction")
+                or message.metadata.get("observed_before_prediction")
+            )
+        return False
+
+    def _message_relation_type(self, message: Message) -> str:
+        if message.metadata and message.metadata.get("relation_type"):
+            relation_type = str(message.metadata["relation_type"]).strip()
+            if relation_type:
+                return relation_type
+        raw_text = str((message.metadata or {}).get("raw_text", "")).lower()
+        for prefix, relation_type in (
+            ("banishment_vote:", "banishment_vote"),
+            ("werewolf_vote:", "werewolf_vote"),
+            ("werewolf_final_target:", "werewolf_attack"),
+            ("guard_action:", "guard_action"),
+            ("seer_check:", "seer_check"),
+            ("witch_save:", "witch_save"),
+            ("witch_poison:", "witch_poison"),
+        ):
+            if prefix in raw_text:
+                return relation_type
+        if "delegate" in raw_text or "assign" in raw_text:
+            return "delegation"
+        return "communication"
+
+    def _concat_optional_scores(
+        self,
+        left: torch.Tensor,
+        right: torch.Tensor | None,
+    ) -> torch.Tensor:
+        if right is None or right.numel() == 0:
+            return left
+        if left.numel() == 0:
+            return right
+        return torch.cat([left, right.to(device=left.device, dtype=left.dtype)], dim=0)
 
     def _has_cold_start_create_signal(self, score_bundle: ActionScoreBundle) -> bool:
         if self.config.zero_shot_action_type_boost <= 0:
@@ -1152,8 +1432,9 @@ class GraphActionPredictor(nn.Module):
             effective_time=effective_time,
             type_log_probs=type_log_probs,
         )
-        if context_candidates:
+        if context_candidates and not self.config.include_graph_candidates_with_context_candidates:
             return context_candidates
+        candidates.extend(context_candidates)
 
         # Apply completion-aware score adjustment to create_scores
         adjusted_create_scores = score_bundle.create_scores
@@ -1186,7 +1467,7 @@ class GraphActionPredictor(nn.Module):
                 action_type_log_prob=float(type_log_probs[1].item()),
             )
         )
-        if len(self.config.candidate_new_roles) > 0:
+        if self.config.enable_add_node_prediction and len(self.config.candidate_new_roles) > 0:
             role_log_probs = torch.log_softmax(score_bundle.role_logits, dim=0)
             for role_index, role_name in enumerate(self.config.candidate_new_roles):
                 candidates.append(
@@ -1197,8 +1478,7 @@ class GraphActionPredictor(nn.Module):
                         role=role_name,
                     )
                 )
-        candidates.sort(key=lambda action: action.score, reverse=True)
-        return candidates
+        return self._deduplicate_sorted_actions(candidates)
 
     def _context_ranked_actions(
         self,
@@ -1237,6 +1517,21 @@ class GraphActionPredictor(nn.Module):
             )
         ranked.sort(key=lambda action: action.score, reverse=True)
         return ranked
+
+    def _deduplicate_sorted_actions(
+        self,
+        actions: list[PredictedGraphAction],
+    ) -> list[PredictedGraphAction]:
+        actions.sort(key=lambda action: action.score, reverse=True)
+        deduped: list[PredictedGraphAction] = []
+        seen: set[tuple[str, str | None, str | None, str | None, str | None]] = set()
+        for action in actions:
+            key = self._action_key(action)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(action)
+        return deduped
 
     def _edge_candidates(
         self,

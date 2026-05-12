@@ -9,7 +9,13 @@ from .ctdg import ContinuousTimeDynamicGraph
 from .encoders import MessageEncoder, NodeFeatureEncoder
 from .gnn import GraphActionPredictor
 from .messages import Message
-from .prediction import PredictionRollout
+from .prediction import (
+    GraphActionType,
+    GraphPredictionContext,
+    PredictedGraphAction,
+    PredictionRollout,
+    PredictionSubgraphRollout,
+)
 from .query_parser import QueryParseResult, QueryParser
 from .llm import LLMApiGraphActionPredictor
 from .state_update import build_state_updater
@@ -76,6 +82,7 @@ class PredictDesignSystem(nn.Module):
             context_dim=self.config.context_dim,
             device=str(self.device),
         )
+        self.active_prediction_context: GraphPredictionContext | None = None
         self.temporal_graph = TemporalGraph(
             context_dim=self.config.context_dim,
             device=self.device,
@@ -101,6 +108,7 @@ class PredictDesignSystem(nn.Module):
             context_dim=self.config.context_dim,
             device=self.device,
         )
+        self.active_prediction_context = None
         self.temporal_graph.graph_context_text = str(graph_context_text or "")
         for node in nodes or []:
             self.temporal_graph.add_node(node)
@@ -196,13 +204,228 @@ class PredictDesignSystem(nn.Module):
         self,
         observation_time: float,
         steps: int | None = None,
+        prediction_context: GraphPredictionContext | None = None,
+        prediction_context_schedule: list[GraphPredictionContext | None] | None = None,
     ) -> PredictionRollout:
+        context = prediction_context if prediction_context is not None else self.active_prediction_context
         return self.predictor.predict_rollout(
             temporal_graph=self.temporal_graph,
             ctdg=self.ctdg,
             observation_time=observation_time,
             steps=steps,
+            prediction_context_schedule=(
+                prediction_context_schedule
+                if prediction_context_schedule is not None
+                else self._default_prediction_context_schedule(context, steps)
+            ),
         )
+
+    def predict_speculative_action_sets(
+        self,
+        observation_time: float,
+        steps: int | None = None,
+        prediction_context: GraphPredictionContext | None = None,
+        prediction_context_schedule: list[GraphPredictionContext | None] | None = None,
+    ) -> PredictionSubgraphRollout:
+        context = prediction_context if prediction_context is not None else self.active_prediction_context
+        return self.predictor.predict_subgraph_rollout(
+            temporal_graph=self.temporal_graph,
+            ctdg=self.ctdg,
+            observation_time=observation_time,
+            steps=steps,
+            prediction_context_schedule=(
+                prediction_context_schedule
+                if prediction_context_schedule is not None
+                else self._default_prediction_context_schedule(context, steps)
+            ),
+        )
+
+    def process_query_runtime_update(
+        self,
+        *,
+        observation_time: float,
+        prediction_context: GraphPredictionContext | None = None,
+        messages: list[Message] | None = None,
+        context_updates: dict[str, TensorLike] | None = None,
+        context_text_updates: dict[str, str] | None = None,
+        observed_actions: list[PredictedGraphAction] | None = None,
+        runtime_text: str = "",
+        steps: int | None = None,
+        apply_observed_actions: bool = True,
+        update_memory: bool = True,
+        update_state_from_actions: bool = False,
+    ) -> PredictionSubgraphRollout:
+        base_context = prediction_context if prediction_context is not None else self.active_prediction_context
+        enriched_context = self._merge_prediction_context_runtime(
+            prediction_context=base_context,
+            runtime_text=runtime_text,
+        )
+        self.active_prediction_context = enriched_context
+        text_updates = context_text_updates or {}
+        for node_id, context in (context_updates or {}).items():
+            self.update_node_context(
+                node_id,
+                context,
+                text=text_updates.get(node_id),
+            )
+        if messages:
+            for message in messages:
+                message.metadata.setdefault("available_for_prediction", True)
+            self.ingest_messages(messages)
+        actions = observed_actions or []
+        if update_memory:
+            self.record_observed_actions(
+                actions,
+                prediction_context=enriched_context,
+                extra_text=runtime_text,
+            )
+        if apply_observed_actions:
+            for action in actions:
+                self.predictor.apply_action(
+                    action=action,
+                    temporal_graph=self.temporal_graph,
+                    ctdg=self.ctdg,
+                    update_state=update_state_from_actions,
+                )
+        return self.predict_speculative_action_sets(
+            observation_time=observation_time,
+            steps=steps,
+            prediction_context=enriched_context,
+        )
+
+    def clear_active_prediction_context(self) -> None:
+        self.active_prediction_context = None
+
+    def record_observed_actions(
+        self,
+        actions: list[PredictedGraphAction],
+        prediction_context: GraphPredictionContext | None = None,
+        extra_text: str = "",
+    ) -> int:
+        if not (
+            self.config.use_few_shot_transition_memory
+            and self.config.use_online_few_shot_updates
+            and hasattr(self.predictor, "add_few_shot_transition")
+        ):
+            return 0
+        added = 0
+        for action in actions:
+            if action.action_type != GraphActionType.CREATE_EDGE:
+                continue
+            if action.source_node_id not in self.temporal_graph.nodes:
+                continue
+            if action.target_node_id not in self.temporal_graph.nodes:
+                continue
+            source = self.temporal_graph.nodes[action.source_node_id]
+            target = self.temporal_graph.nodes[action.target_node_id]
+            self.predictor.add_few_shot_transition(
+                source_role=source.role,
+                target_role=target.role,
+                relation_type=str(action.relation_type or ""),
+                text=self._observed_action_memory_text(
+                    action=action,
+                    prediction_context=prediction_context,
+                    extra_text=extra_text,
+                ),
+                source_node_id=action.source_node_id,
+                target_node_id=action.target_node_id,
+            )
+            added += 1
+        return added
+
+    def _observed_action_memory_text(
+        self,
+        action: PredictedGraphAction,
+        prediction_context: GraphPredictionContext | None,
+        extra_text: str = "",
+    ) -> str:
+        source_text = self._node_memory_text(action.source_node_id)
+        target_text = self._node_memory_text(action.target_node_id)
+        metadata_text = " ".join(
+            str(action.metadata.get(key, "")).strip()
+            for key in ("transition_id", "description", "label", "name")
+            if str(action.metadata.get(key, "")).strip()
+        )
+        context_text = prediction_context.combined_text() if prediction_context else ""
+        return "\n".join(
+            part
+            for part in (
+                self.temporal_graph.graph_context_text,
+                context_text,
+                str(action.relation_type or ""),
+                metadata_text,
+                source_text,
+                target_text,
+                extra_text,
+            )
+            if str(part).strip()
+        )
+
+    def _node_memory_text(self, node_id: str | None) -> str:
+        if node_id is None or node_id not in self.temporal_graph.nodes:
+            return ""
+        node = self.temporal_graph.nodes[node_id]
+        return f"{node.node_id} {node.role} {node.context_text}"
+
+    def _default_prediction_context_schedule(
+        self,
+        prediction_context: GraphPredictionContext | None,
+        steps: int | None,
+    ) -> list[GraphPredictionContext | None] | None:
+        if prediction_context is None:
+            return None
+        step_count = steps or self.config.prediction_horizon
+        if self.config.reuse_current_context_for_speculative_rollout:
+            return [prediction_context for _ in range(step_count)]
+        return [prediction_context]
+
+    def _merge_prediction_context_runtime(
+        self,
+        prediction_context: GraphPredictionContext | None,
+        runtime_text: str,
+    ) -> GraphPredictionContext | None:
+        if prediction_context is None:
+            if not runtime_text.strip():
+                return None
+            return GraphPredictionContext(runtime_text=runtime_text.strip())
+        merged_runtime = self._merge_runtime_text(
+            str(prediction_context.runtime_text or ""),
+            runtime_text,
+        )
+        return GraphPredictionContext(
+            source_node_id=prediction_context.source_node_id,
+            query_text=prediction_context.query_text,
+            graph_profile_text=prediction_context.graph_profile_text,
+            source_output_text=prediction_context.source_output_text,
+            runtime_text=merged_runtime,
+            candidate_actions=[
+                PredictedGraphAction(
+                    action_type=action.action_type,
+                    score=action.score,
+                    effective_time=action.effective_time,
+                    source_node_id=action.source_node_id,
+                    target_node_id=action.target_node_id,
+                    relation_type=action.relation_type,
+                    role=action.role,
+                    new_node_id=action.new_node_id,
+                    metadata=dict(action.metadata),
+                )
+                for action in prediction_context.candidate_actions
+            ],
+            metadata=dict(prediction_context.metadata),
+        )
+
+    def _merge_runtime_text(self, *items: str) -> str:
+        lines: list[str] = []
+        seen: set[str] = set()
+        for item in items:
+            for line in str(item or "").splitlines():
+                cleaned = line.strip()
+                if not cleaned or cleaned in seen:
+                    continue
+                seen.add(cleaned)
+                lines.append(cleaned)
+        return "\n".join(lines)
 
     def _merge_nodes(
         self,

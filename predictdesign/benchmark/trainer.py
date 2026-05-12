@@ -86,6 +86,8 @@ def bootstrap_few_shot_transition_memory(
                     target_role=target.role,
                     relation_type=str(action.relation_type or ""),
                     text=_transition_memory_text(episode=episode, step=step, action=action, graph=graph),
+                    source_node_id=action.source_node_id,
+                    target_node_id=action.target_node_id,
                 )
             for action in step.observed_actions:
                 _apply_action_to_memory_graph(graph, action, cfg)
@@ -228,6 +230,38 @@ def _apply_action_to_memory_graph(
             )
 
 
+def speculative_prediction_context(
+    prediction_context: GraphPredictionContext | None,
+) -> GraphPredictionContext | None:
+    if prediction_context is None:
+        return None
+    return GraphPredictionContext(
+        source_node_id=prediction_context.source_node_id,
+        query_text=prediction_context.query_text,
+        graph_profile_text=prediction_context.graph_profile_text,
+        source_output_text=prediction_context.source_output_text,
+        runtime_text=prediction_context.runtime_text,
+        candidate_actions=[
+            _clone_action(action) for action in prediction_context.candidate_actions
+        ],
+        metadata=dict(prediction_context.metadata),
+    )
+
+
+def _clone_action(action: PredictedGraphAction) -> PredictedGraphAction:
+    return PredictedGraphAction(
+        action_type=action.action_type,
+        score=action.score,
+        effective_time=action.effective_time,
+        source_node_id=action.source_node_id,
+        target_node_id=action.target_node_id,
+        relation_type=action.relation_type,
+        role=action.role,
+        new_node_id=action.new_node_id,
+        metadata=dict(action.metadata),
+    )
+
+
 class BenchmarkTrainer:
     def __init__(
         self,
@@ -346,6 +380,26 @@ class BenchmarkTrainer:
             eval_episode_count=len(eval_episodes or []),
         )
 
+    def apply_observed_step(
+        self,
+        system: PredictDesignSystem,
+        step: EpisodeStep,
+        config: ExperimentConfig | None = None,
+        update_memory: bool | None = None,
+    ) -> None:
+        cfg = config or system.config
+        should_update_memory = (
+            cfg.use_online_few_shot_updates if update_memory is None else update_memory
+        )
+        self._apply_context_updates(system, step)
+        system.ingest_messages(step.messages)
+        if should_update_memory:
+            system.record_observed_actions(
+                step.observed_actions,
+                prediction_context=step.prediction_context,
+            )
+        self._apply_actions(system, step.observed_actions)
+
     def _fit_episode(
         self,
         system: PredictDesignSystem,
@@ -369,11 +423,21 @@ class BenchmarkTrainer:
             self._apply_context_updates(system, step)
             step_messages = self._augment_messages(step.messages, cfg, rng)
             system.ingest_messages(step_messages)
+            if cfg.use_online_few_shot_updates:
+                system.record_observed_actions(
+                    step.observed_actions,
+                    prediction_context=step.prediction_context,
+                )
             self._apply_actions(system, step.observed_actions)
             rollout_targets = self._future_rollout_targets(
                 episode=episode,
                 step_index=step_index,
                 horizon=system.config.prediction_horizon,
+            )
+            rollout_targets = self._speculative_rollout_targets(
+                rollout_targets,
+                step.prediction_context,
+                cfg,
             )
             loss = self._rollout_loss(system, rollout_targets, cfg)
             if float(loss.detach().item()) <= 0:
@@ -523,6 +587,28 @@ class BenchmarkTrainer:
                     )
                 )
         return targets
+
+    def _speculative_rollout_targets(
+        self,
+        targets: list[RolloutTarget],
+        current_prediction_context: GraphPredictionContext | None,
+        config: ExperimentConfig,
+    ) -> list[RolloutTarget]:
+        if not config.use_speculative_rollout_context:
+            return targets
+        prefix_context = speculative_prediction_context(current_prediction_context)
+        speculative_targets: list[RolloutTarget] = []
+        for index, (observation_time, actions, _) in enumerate(targets):
+            speculative_targets.append(
+                (
+                    observation_time,
+                    actions,
+                    prefix_context
+                    if config.reuse_current_context_for_speculative_rollout or index == 0
+                    else None,
+                )
+            )
+        return speculative_targets
 
     def _multi_target_log_loss(
         self,
@@ -685,10 +771,13 @@ class BenchmarkTrainer:
                 structural_edge_metadata=episode.initial_structural_edge_metadata,
             )
             for step_index, step in enumerate(episode.steps):
-                self._apply_context_updates(system, step)
-                system.ingest_messages(step.messages)
-                self._apply_actions(system, step.observed_actions)
+                self.apply_observed_step(system, step)
                 rollout_targets = self._future_rollout_targets(episode, step_index=step_index, horizon=1)
+                rollout_targets = self._speculative_rollout_targets(
+                    rollout_targets,
+                    step.prediction_context,
+                    system.config,
+                )
                 if not rollout_targets:
                     continue
                 observation_time, expected_actions, prediction_context = rollout_targets[0]

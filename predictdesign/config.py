@@ -56,6 +56,11 @@ class ExperimentConfig:
     use_structural_candidate_priors: bool = True
     use_zero_shot_action_priors: bool = True
     use_few_shot_transition_memory: bool = True
+    use_online_few_shot_updates: bool = True
+    use_runtime_context_features: bool = True
+    use_speculative_rollout_context: bool = True
+    reuse_current_context_for_speculative_rollout: bool = True
+    include_graph_candidates_with_context_candidates: bool = True
     context_source_bias_weight: float = 2.0
     candidate_text_score_weight: float = 0.35
     candidate_structural_prior_weight: float = 0.75
@@ -65,6 +70,16 @@ class ExperimentConfig:
     learned_candidate_score_weight: float = 1.0
     few_shot_memory_weight: float = 1.25
     few_shot_memory_max_examples: int = 512
+    runtime_context_max_edges: int = 8
+    enable_add_node_prediction: bool = True
+    create_action_bias: float = 0.0
+    remove_action_bias: float = 0.0
+    add_node_action_bias: float = 0.0
+    no_op_action_bias: float = 0.0
+    runtime_message_candidate_score: float = 12.0
+    runtime_message_time_tolerance: float = 0.25
+    no_directed_message_noop_bias: float = 3.0
+    allow_same_time_runtime_messages: bool = False
     # Completion detection
     use_completion_detection: bool = True
     completion_threshold: float = 0.5
@@ -86,7 +101,12 @@ class ExperimentConfig:
     )
     candidate_relation_types: tuple[str, ...] = field(
         default_factory=lambda: (
+            "activate",
             "communication",
+            "delegate",
+            "delegate_return",
+            "retry",
+            "review",
             "delegation",
             "banishment_vote",
             "werewolf_vote",
@@ -160,6 +180,14 @@ class ExperimentConfig:
             raise ValueError("few_shot_memory_weight must be non-negative.")
         if self.few_shot_memory_max_examples <= 0:
             raise ValueError("few_shot_memory_max_examples must be positive.")
+        if self.runtime_context_max_edges < 0:
+            raise ValueError("runtime_context_max_edges must be non-negative.")
+        if self.runtime_message_candidate_score < 0:
+            raise ValueError("runtime_message_candidate_score must be non-negative.")
+        if self.runtime_message_time_tolerance < 0:
+            raise ValueError("runtime_message_time_tolerance must be non-negative.")
+        if self.no_directed_message_noop_bias < 0:
+            raise ValueError("no_directed_message_noop_bias must be non-negative.")
         if self.training_node_feature_dropout < 0 or self.training_node_feature_dropout >= 1:
             raise ValueError("training_node_feature_dropout must be in [0, 1).")
         if self.training_edge_feature_dropout < 0 or self.training_edge_feature_dropout >= 1:

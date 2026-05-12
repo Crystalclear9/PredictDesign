@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import OrderedDict
 
 import torch
 from torch import nn
@@ -80,6 +81,8 @@ class SentenceTransformerEncoder(nn.Module):
         # Lightweight fallback for environments without sentence-transformers
         self._fallback_hash_dim = st_dim
         self._use_fallback = False
+        self._raw_embedding_cache: OrderedDict[tuple[str, str, str], torch.Tensor] = OrderedDict()
+        self._raw_embedding_cache_max_size = 8192
 
     def _ensure_model(self) -> None:
         if self._st_model is not None:
@@ -104,10 +107,14 @@ class SentenceTransformerEncoder(nn.Module):
 
     def _fallback_encode(self, text: str, device: torch.device) -> torch.Tensor:
         """Hash-based fallback when sentence-transformers is unavailable."""
+        normalized = text.strip().lower() if text else ""
+        cached = self._get_cached_raw_embedding("fallback", normalized, device)
+        if cached is not None:
+            return cached
         vector = torch.zeros(self._fallback_hash_dim, dtype=torch.float32, device=device)
-        if not text or not text.strip():
+        if not normalized:
+            self._set_cached_raw_embedding("fallback", normalized, device, vector)
             return vector
-        normalized = text.strip().lower()
         tokens = normalized.split()
         for i, token in enumerate(tokens[:128]):
             digest = hashlib.sha256(token.encode("utf-8")).digest()
@@ -117,7 +124,34 @@ class SentenceTransformerEncoder(nn.Module):
         norm = vector.norm(p=2)
         if float(norm.item()) > 0:
             vector = vector / norm
+        self._set_cached_raw_embedding("fallback", normalized, device, vector)
         return vector
+
+    def _get_cached_raw_embedding(
+        self,
+        namespace: str,
+        text: str,
+        device: torch.device,
+    ) -> torch.Tensor | None:
+        key = (namespace, str(device), text)
+        cached = self._raw_embedding_cache.get(key)
+        if cached is None:
+            return None
+        self._raw_embedding_cache.move_to_end(key)
+        return cached.clone()
+
+    def _set_cached_raw_embedding(
+        self,
+        namespace: str,
+        text: str,
+        device: torch.device,
+        embedding: torch.Tensor,
+    ) -> None:
+        key = (namespace, str(device), text)
+        self._raw_embedding_cache[key] = embedding.detach().clone()
+        self._raw_embedding_cache.move_to_end(key)
+        while len(self._raw_embedding_cache) > self._raw_embedding_cache_max_size:
+            self._raw_embedding_cache.popitem(last=False)
 
     def forward(self, text: str, device: torch.device | str) -> torch.Tensor:
         device = torch.device(device)
@@ -129,12 +163,19 @@ class SentenceTransformerEncoder(nn.Module):
             # SentenceTransformer.encode() internally uses torch.inference_mode(),
             # so we must .clone() to break out of that context before passing
             # through our trainable projection layer.
-            embedding = self._st_model.encode(
-                text or "",
-                convert_to_tensor=True,
-                show_progress_bar=False,
-            )
-            raw_embedding = embedding.to(device=device, dtype=torch.float32).clone()
+            normalized = text or ""
+            cached = self._get_cached_raw_embedding("sentence_transformer", normalized, device)
+            if cached is not None:
+                raw_embedding = cached
+            else:
+                embedding = self._st_model.encode(
+                    normalized,
+                    convert_to_tensor=True,
+                    show_progress_bar=False,
+                )
+                raw_embedding = embedding.to(device=device, dtype=torch.float32).clone()
+                if self._freeze:
+                    self._set_cached_raw_embedding("sentence_transformer", normalized, device, raw_embedding)
 
         return self.projection(raw_embedding)
 
