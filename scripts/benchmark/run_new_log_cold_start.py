@@ -156,6 +156,9 @@ class NextAgentGlobalMemory:
     main_transition_counts: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     outgoing_rank_counts: dict[str, Counter[int]] = field(default_factory=lambda: defaultdict(Counter))
     round_index_counts: dict[int, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    source_turn_transition_counts: dict[tuple[str, int], Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    contextual_transition_counts: dict[tuple[str, int, int], Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    outgoing_signature_transition_counts: dict[tuple[str, tuple[str, ...], int], Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     source_number_delta_counts: dict[int, Counter[int]] = field(default_factory=lambda: defaultdict(Counter))
     first_main_targets: list[str] = field(default_factory=list)
     agent_profile_tokens: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
@@ -168,6 +171,7 @@ class NextAgentGlobalMemory:
         observed_next_agent: str,
         outgoing_agents: list[str],
         round_index: int,
+        source_turn_count: int | None = None,
     ) -> None:
         self.main_transition_counts[current_agent][observed_next_agent] += 1
         if observed_next_agent in outgoing_agents:
@@ -178,6 +182,14 @@ class NextAgentGlobalMemory:
             if source_number < 10**8 and target_number < 10**8:
                 self.source_number_delta_counts[source_number][target_number - source_number] += 1
         self.round_index_counts[round_index][observed_next_agent] += 1
+        if source_turn_count is not None:
+            self.source_turn_transition_counts[(current_agent, source_turn_count)][observed_next_agent] += 1
+            self.contextual_transition_counts[
+                (current_agent, source_turn_count, round_index)
+            ][observed_next_agent] += 1
+            self.outgoing_signature_transition_counts[
+                (current_agent, tuple(outgoing_agents), source_turn_count)
+            ][observed_next_agent] += 1
 
     def update_file_summary(
         self,
@@ -641,6 +653,57 @@ def _agent_context_text(event: dict[str, Any], agent_id: str) -> str:
     return str(agent.get("context") or "")
 
 
+def _agent_profile_text(event: dict[str, Any], agent_id: str) -> str:
+    agents = event.get("agents") or {}
+    agent = agents.get(agent_id)
+    if not isinstance(agent, dict):
+        return ""
+    return str(agent.get("profile") or "")
+
+
+def _role_tag_from_profile(profile_text: str) -> str | None:
+    normalized = profile_text.lower()
+    role_patterns = (
+        ("analyst", ("coding analyst", "analyze_task", "decompose_task")),
+        ("implementation", ("implementation agent", "create_solution", "revise_solution", "coder")),
+        ("tester", ("coding tester", "run_tests", "test_suite", "verification checks")),
+        ("debugger", ("coding debugger", "run_and_debug", "diagnosing runtime failures")),
+        ("reviewer", ("coding reviewer", "give_advice_and_revise", "code quality")),
+    )
+    for role, markers in role_patterns:
+        if any(marker in normalized for marker in markers):
+            return role
+    return None
+
+
+def _role_workflow_prior_scores(
+    event: dict[str, Any],
+    *,
+    current_agent: str,
+    candidates: list[str],
+) -> dict[str, float]:
+    current_role = _role_tag_from_profile(_agent_profile_text(event, current_agent))
+    if current_role is None:
+        return {}
+    role_by_agent = {
+        agent_id: _role_tag_from_profile(_agent_profile_text(event, agent_id))
+        for agent_id in candidates
+    }
+    preferred_roles = {
+        "analyst": ("implementation",),
+        "implementation": ("tester",),
+        "tester": ("debugger",),
+        "debugger": ("reviewer",),
+        "reviewer": ("implementation", "tester"),
+    }.get(current_role, ())
+    scores: dict[str, float] = {}
+    for rank, preferred_role in enumerate(preferred_roles):
+        for agent_id, role in role_by_agent.items():
+            if role == preferred_role:
+                scores[agent_id] = max(scores.get(agent_id, 0.0), 80.0 - 16.0 * rank)
+    return scores
+
+
 def _visible_agent_context_features(
     *,
     event: dict[str, Any],
@@ -720,8 +783,10 @@ def _rank_next_agents(
     prompt_idf_profile_scores: dict[str, float] = {}
     online_calibration_scores: dict[str, float] = {}
     schedule_prior_scores: dict[str, float] = {}
+    role_workflow_prior_scores: dict[str, float] = {}
     meta_prior_scores: dict[str, float] = {}
     adaptive_cross_file_scores: dict[str, float] = {}
+    contextual_cross_file_scores: dict[str, float] = {}
     adaptive_cross_file_profile_stability = 0.0
     visible_context_scores: dict[str, float] = {}
     visible_context_features: dict[str, dict[str, float]] = {}
@@ -764,7 +829,45 @@ def _rank_next_agents(
             graph_source = "scheduler_round_state"
     elif event_type == "main_turn":
         outgoing_agents, graph_source = _infer_outgoing_agents_with_source(event, agents)
+        source_turn_count = sum(next_state.local_main_transition_counts[current_agent].values())
+        round_index = (
+            next_state.round_main_agents.index(current_agent)
+            if current_agent in next_state.round_main_agents
+            else len(next_state.round_main_agents)
+        )
+        include_self_candidate = False
+        if current_agent in agents and current_agent not in outgoing_agents:
+            local_source_counts = next_state.local_main_transition_counts[current_agent]
+            local_total = sum(local_source_counts.values())
+            include_self_candidate = (
+                local_total > 0
+                and local_source_counts[current_agent] / max(local_total, 1) >= 0.5
+            )
+            if use_cross_file_memory and enable_adaptive_cross_file_prior:
+                for self_counter in (
+                    next_global_memory.source_turn_transition_counts[
+                        (current_agent, source_turn_count)
+                    ],
+                    next_global_memory.contextual_transition_counts[
+                        (current_agent, source_turn_count, round_index)
+                    ],
+                    next_global_memory.outgoing_signature_transition_counts[
+                        (current_agent, tuple(outgoing_agents), source_turn_count)
+                    ],
+                ):
+                    total = sum(self_counter.values())
+                    if total < adaptive_cross_file_min_support:
+                        continue
+                    top_target, top_count = self_counter.most_common(1)[0]
+                    if (
+                        top_target == current_agent
+                        and top_count / max(total, 1) >= 0.5
+                    ):
+                        include_self_candidate = True
+                        break
         candidates = list(outgoing_agents)
+        if include_self_candidate:
+            candidates.append(current_agent)
         if "PLANNER" in agents:
             candidates.append("PLANNER")
         candidate_set = set(candidates)
@@ -776,8 +879,15 @@ def _rank_next_agents(
         for rank, agent_id in enumerate(outgoing_agents):
             scores[agent_id] += 2.0 * (len(outgoing_agents) - rank) / max(1, len(outgoing_agents))
 
+        role_workflow_prior_scores = _role_workflow_prior_scores(
+            event,
+            current_agent=current_agent,
+            candidates=candidates,
+        )
+        for agent_id, role_score in role_workflow_prior_scores.items():
+            scores[agent_id] += role_score
+
         if enable_research_schedule_prior:
-            source_turn_count = sum(next_state.local_main_transition_counts[current_agent].values())
             if outgoing_agents:
                 first_outgoing = outgoing_agents[0]
                 first_bonus = 2.0
@@ -892,9 +1002,6 @@ def _rank_next_agents(
                 previous_first_target = next_global_memory.first_main_targets[-1]
                 if previous_first_target in candidate_set:
                     main_turn_index = sum(next_state.local_file_target_counts.values())
-                    source_turn_count = sum(
-                        next_state.local_main_transition_counts[current_agent].values()
-                    )
                     previous_first_bonus = 10.0
                     if main_turn_index == 0:
                         previous_first_bonus -= 5.0
@@ -942,7 +1049,6 @@ def _rank_next_agents(
         for rank, count in next_state.local_outgoing_rank_counts[current_agent].items():
             if 0 <= rank < len(outgoing_agents):
                 scores[outgoing_agents[rank]] += 1.0 * count
-        round_index = len(next_state.round_main_agents)
         for target_agent, count in next_state.local_round_index_counts[round_index].items():
             if target_agent in candidate_set:
                 scores[target_agent] += 4.0 * count
@@ -994,36 +1100,64 @@ def _rank_next_agents(
         if use_cross_file_memory and enable_adaptive_cross_file_prior:
             profile_stability = next_global_memory.profile_stability(event, current_agent)
             adaptive_cross_file_profile_stability = profile_stability
-            transition_counts = next_global_memory.main_transition_counts[current_agent]
-            candidate_transition_counts = Counter(
-                {
-                    target_agent: count
-                    for target_agent, count in transition_counts.items()
-                    if target_agent in candidate_set
-                }
-            )
-            total_transition_count = sum(candidate_transition_counts.values())
-            if total_transition_count >= adaptive_cross_file_min_support:
-                ordered_targets = candidate_transition_counts.most_common()
+
+            def apply_adaptive_counter(
+                counter: Counter[str],
+                *,
+                weight: float,
+                output_scores: dict[str, float],
+            ) -> None:
+                candidate_counts = Counter(
+                    {
+                        target_agent: count
+                        for target_agent, count in counter.items()
+                        if target_agent in candidate_set
+                    }
+                )
+                total_count = sum(candidate_counts.values())
+                if total_count < adaptive_cross_file_min_support:
+                    return
+                ordered_targets = candidate_counts.most_common()
                 top_target, top_count = ordered_targets[0]
                 second_count = ordered_targets[1][1] if len(ordered_targets) > 1 else 0
-                confidence = top_count / total_transition_count
-                margin = (top_count - second_count) / total_transition_count
+                confidence = top_count / total_count
+                margin = (top_count - second_count) / total_count
                 if (
                     confidence >= adaptive_cross_file_min_confidence
                     and profile_stability >= adaptive_cross_file_min_profile_stability
                     and margin > 0.0
                 ):
-                    bonus = (
-                        adaptive_cross_file_weight
-                        * profile_stability
-                        * confidence
-                        * (0.5 + margin)
-                    )
+                    bonus = weight * profile_stability * confidence * (0.5 + margin)
                     scores[top_target] += bonus
-                    adaptive_cross_file_scores[top_target] = (
-                        adaptive_cross_file_scores.get(top_target, 0.0) + bonus
-                    )
+                    output_scores[top_target] = output_scores.get(top_target, 0.0) + bonus
+
+            transition_counts = next_global_memory.main_transition_counts[current_agent]
+            apply_adaptive_counter(
+                transition_counts,
+                weight=adaptive_cross_file_weight,
+                output_scores=adaptive_cross_file_scores,
+            )
+            apply_adaptive_counter(
+                next_global_memory.source_turn_transition_counts[
+                    (current_agent, source_turn_count)
+                ],
+                weight=0.35 * adaptive_cross_file_weight,
+                output_scores=contextual_cross_file_scores,
+            )
+            apply_adaptive_counter(
+                next_global_memory.contextual_transition_counts[
+                    (current_agent, source_turn_count, round_index)
+                ],
+                weight=0.55 * adaptive_cross_file_weight,
+                output_scores=contextual_cross_file_scores,
+            )
+            apply_adaptive_counter(
+                next_global_memory.outgoing_signature_transition_counts[
+                    (current_agent, tuple(outgoing_agents), source_turn_count)
+                ],
+                weight=0.65 * adaptive_cross_file_weight,
+                output_scores=contextual_cross_file_scores,
+            )
 
             rank_counts = next_global_memory.outgoing_rank_counts[current_agent]
             total_rank_count = sum(rank_counts.values())
@@ -1098,13 +1232,17 @@ def _rank_next_agents(
         "prompt_idf_profile_scores": prompt_idf_profile_scores if event_type == "main_turn" else {},
         "online_calibration_scores": online_calibration_scores if event_type == "main_turn" else {},
         "schedule_prior_scores": schedule_prior_scores if event_type == "main_turn" else {},
+        "role_workflow_prior_scores": role_workflow_prior_scores if event_type == "main_turn" else {},
         "meta_prior_scores": meta_prior_scores if event_type == "main_turn" else {},
         "adaptive_cross_file_scores": adaptive_cross_file_scores if event_type == "main_turn" else {},
+        "contextual_cross_file_scores": contextual_cross_file_scores if event_type == "main_turn" else {},
         "adaptive_cross_file_profile_stability": (
             adaptive_cross_file_profile_stability if event_type == "main_turn" else 0.0
         ),
         "visible_context_scores": visible_context_scores if event_type == "main_turn" else {},
         "visible_context_features": visible_context_features if event_type == "main_turn" else {},
+        "source_turn_count": source_turn_count if event_type == "main_turn" else 0,
+        "round_index": round_index if event_type == "main_turn" else 0,
     }
     return ranked, dict(scores), metadata
 
@@ -1366,6 +1504,7 @@ def _evaluate_file(
     visible_context_length_weight: float,
     dataset_name: str,
     prediction_target: str,
+    collect_transition_updates: bool = False,
 ) -> tuple[list[dict[str, Any]], list[str], dict[str, Any]]:
     events = _read_jsonl(path)
     if not events:
@@ -1375,6 +1514,7 @@ def _evaluate_file(
     state = PolicyState()
     next_state = NextAgentPolicyState()
     timing_records: list[dict[str, Any]] = []
+    transition_updates: list[dict[str, Any]] = []
     sequence: list[str] = []
     forbidden_current_text_hits = 0
     pair_calibration_counts: dict[tuple[str, str], Counter[bool]] = defaultdict(Counter)
@@ -1510,9 +1650,17 @@ def _evaluate_file(
                 "memory_idf_profile_scores": prediction_metadata.get("memory_idf_profile_scores", {}),
                 "prompt_idf_profile_scores": prediction_metadata.get("prompt_idf_profile_scores", {}),
                 "schedule_prior_scores": prediction_metadata.get("schedule_prior_scores", {}),
+                "role_workflow_prior_scores": prediction_metadata.get(
+                    "role_workflow_prior_scores",
+                    {},
+                ),
                 "meta_prior_scores": prediction_metadata.get("meta_prior_scores", {}),
                 "adaptive_cross_file_scores": prediction_metadata.get(
                     "adaptive_cross_file_scores",
+                    {},
+                ),
+                "contextual_cross_file_scores": prediction_metadata.get(
+                    "contextual_cross_file_scores",
                     {},
                 ),
                 "adaptive_cross_file_profile_stability": prediction_metadata.get(
@@ -1520,6 +1668,8 @@ def _evaluate_file(
                     0.0,
                 ),
                 "visible_context_scores": prediction_metadata.get("visible_context_scores", {}),
+                "source_turn_count": prediction_metadata.get("source_turn_count", 0),
+                "round_index": prediction_metadata.get("round_index", 0),
                 "pair_calibration_signature": prediction_metadata.get("pair_calibration_signature", []),
                 "pair_calibration_counts": prediction_metadata.get("pair_calibration_counts", {}),
                 "reranker_scores": {
@@ -1572,11 +1722,17 @@ def _evaluate_file(
                     pair_calibration_counts[(pair_signature[0], pair_signature[1])][
                         expected == pair_signature[1]
                     ] += 1
+                transition_update = {
+                    "current_agent": current_agent,
+                    "observed_next_agent": expected,
+                    "outgoing_agents": prediction_metadata["outgoing_agents"],
+                    "round_index": prediction_metadata.get("round_index", 0),
+                    "source_turn_count": prediction_metadata.get("source_turn_count", 0),
+                }
+                if collect_transition_updates:
+                    transition_updates.append(transition_update)
                 next_global_memory.update(
-                    current_agent=current_agent,
-                    observed_next_agent=expected,
-                    outgoing_agents=prediction_metadata["outgoing_agents"],
-                    round_index=len(next_state.round_main_agents) - 1,
+                    **transition_update,
                 )
 
     audit = {
@@ -1611,6 +1767,8 @@ def _evaluate_file(
             if isinstance(agent, dict)
         },
     }
+    if collect_transition_updates:
+        audit["_transition_updates"] = transition_updates
     return timing_records, sequence, audit
 
 
@@ -1766,13 +1924,14 @@ def evaluate_logs(
             if prediction_target == "current_event"
             else "current executing agent id + current request scheduling metadata + inferred prompt collaboration graph + "
             "previous observed transitions"
+            " + visible profile-derived role workflow prior"
             + (
                 " + current-event visible agents[*].context history snapshots"
                 if include_visible_agent_context
                 else ""
             )
             + (
-            " + adaptive cross-file transition prior from completed queries"
+                " + adaptive/contextual cross-file transition prior from completed queries"
                 if enable_adaptive_cross_file_prior and use_cross_file_memory
                 else ""
             )
@@ -1824,6 +1983,10 @@ def evaluate_logs(
             else 0.0
         ),
         "visible_order_prior_enabled": enable_research_schedule_prior,
+        "visible_role_workflow_prior_enabled": True,
+        "contextual_cross_file_prior_enabled": (
+            enable_adaptive_cross_file_prior if use_cross_file_memory else False
+        ),
         "cross_query_start_prior_enabled": enable_research_meta_prior,
         "idf_profile_prior_enabled": enable_idf_profile_prior,
         "online_pair_calibration_enabled": enable_online_pair_calibration,

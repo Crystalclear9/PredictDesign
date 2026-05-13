@@ -57,7 +57,7 @@ Run the strict generic query-internal next-agent protocol on one scenario folder
   --prediction-target next_agent `
   --use-cross-file-memory `
   --enable-adaptive-cross-file-prior `
-  --adaptive-cross-file-weight 40 `
+  --adaptive-cross-file-weight 30 `
   --adaptive-cross-file-min-support 1 `
   --adaptive-cross-file-min-confidence 0.4 `
   --adaptive-cross-file-min-profile-stability 0.65 `
@@ -74,6 +74,27 @@ Run the strict generic query-internal next-agent protocol on one scenario folder
 ```
 
 Use `--log-root results\research\research` and matching output paths to run the research scenario.
+
+Run the concurrent-arrival protocol where each batch has 3-4 queries. All queries in one batch are scored from the same pre-batch online memory snapshot; their observed labels update cross-query memory only after the whole batch has been scored. Query-internal online updates are still allowed inside each file because those events happen sequentially within the query.
+
+```powershell
+.venv\Scripts\python.exe scripts\benchmark\run_new_log_concurrent_suite.py `
+  --root results\research `
+  --scenarios coding research `
+  --batch-sizes 3 4
+```
+
+To run or inspect one scenario only:
+
+```powershell
+.venv\Scripts\python.exe scripts\benchmark\run_new_log_concurrent_batches.py `
+  --log-root results\research\coding `
+  --batch-size 3
+
+.venv\Scripts\python.exe scripts\benchmark\run_new_log_concurrent_batches.py `
+  --log-root results\research\research `
+  --batch-size 4
+```
 
 Run the base policy without cross-file priors or online reranking:
 
@@ -96,16 +117,38 @@ Latest local results on `results/research/coding` and `results/research/research
 
 | Scenario | Files | Steps | hit@1 | hit@2 | hit@3 | hit@5 | Mean latency | P95 latency |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| coding | 20 | 402 | 81.84% | 84.83% | 90.05% | 91.54% | 9.56 ms | 24.81 ms |
-| research | 20 | 200 | 69.00% | 88.50% | 95.50% | 99.00% | 13.63 ms | 43.14 ms |
+| coding | 20 | 402 | 82.59% | 86.57% | 92.04% | 93.03% | 9.25 ms | 22.98 ms |
+| research | 20 | 200 | 69.00% | 88.50% | 95.50% | 99.00% | 13.60 ms | 46.25 ms |
 
 The current strict generic single-branch result does not satisfy the desired 80% hit@1 on every scenario. `coding` reaches the target; `research` does not. Reporting only the weighted mean would hide that failure, so the README keeps the per-scenario table as the primary result.
 
 The strongest useful signal is still top-k coverage: research reaches 88.50% hit@2 and 95.50% hit@3 without leakage. That is useful for multi-branch speculative execution, but it is not a substitute for hit@1 and should not be reported as single-action accuracy.
 
+Concurrent-arrival results on the same folders:
+
+| Scenario | Batch size | Batches | Steps | hit@1 | hit@2 | hit@3 | hit@5 | Mean latency | P95 latency |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| coding | 3 | 7 | 402 | 82.84% | 86.82% | 92.04% | 93.03% | 9.04 ms | 22.54 ms |
+| coding | 4 | 5 | 402 | 82.84% | 86.82% | 92.04% | 93.03% | 15.29 ms | 38.97 ms |
+| research | 3 | 7 | 200 | 67.00% | 89.00% | 95.50% | 98.50% | 16.22 ms | 44.40 ms |
+| research | 4 | 5 | 200 | 64.00% | 86.50% | 94.50% | 99.00% | 23.70 ms | 83.53 ms |
+
+Cross-scenario concurrent averages:
+
+| Batch size | Step-micro hit@1 | Scenario-macro hit@1 | Query-macro hit@1 | Batch-macro hit@1 |
+| ---: | ---: | ---: | ---: | ---: |
+| 3 | 77.57% | 74.92% | 77.33% | 76.86% |
+| 4 | 76.58% | 73.42% | 75.58% | 74.03% |
+
+`Step-micro` means one vote per strict predictive step. `Scenario-macro` means coding and research have equal weight. `Query-macro` means each query with at least one strict predictive step has equal weight. `Batch-macro` means each concurrent batch has equal weight.
+
+The drop from sequential replay is expected: in batch mode, query 2-4 inside the same batch cannot benefit from query 1's newly observed transitions. This is stricter and closer to a real concurrent scheduler than a one-query-at-a-time replay.
+
 The generic priors used by the strict protocol are:
 
 - Adaptive cross-file transition prior: uses only completed queries and is gated by support, confidence, and profile stability.
+- Contextual cross-file transition prior: conditions completed-query memory on current source turn count, round position, and visible outgoing signature.
+- Visible role workflow prior: infers roles such as analyst, implementation, tester, debugger, and reviewer from current visible profiles/tool descriptions, then scores the matching next role. This is profile-derived and does not read labels or outputs.
 - Visible-order prior: uses the current visible candidate order and source-turn count.
 - Cross-query start prior: reuses previous completed query starts and already observed early targets inside the current query.
 - Pair calibration: swaps top1/top2 only after the same top1/top2 pattern has already been observed earlier.
