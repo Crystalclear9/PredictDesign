@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import random
 import re
 import time
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +24,67 @@ def _agent_order_key(agent_id: str) -> tuple[int, int, str]:
 
 def _ordered_agents(agent_ids: list[str]) -> list[str]:
     return sorted({str(agent_id) for agent_id in agent_ids}, key=_agent_order_key)
+
+
+_AGENT_ID_PATTERN = re.compile(r"(?<![A-Za-z0-9_])(PLANNER|agent\d+)(?![A-Za-z0-9_])")
+
+
+def _remap_agent_id_text(text: str, mapping: dict[str, str]) -> str:
+    if not mapping or not text:
+        return text
+    return _AGENT_ID_PATTERN.sub(lambda match: mapping.get(match.group(1), match.group(1)), text)
+
+
+def _remap_agent_id_value(value: Any, mapping: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        return _remap_agent_id_text(value, mapping)
+    if isinstance(value, list):
+        return [_remap_agent_id_value(item, mapping) for item in value]
+    if isinstance(value, dict):
+        return {
+            mapping.get(str(key), str(key)): _remap_agent_id_value(item, mapping)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _per_file_agent_id_mapping(agents: list[str], seed_text: str) -> dict[str, str]:
+    workers = [agent_id for agent_id in _ordered_agents(agents) if agent_id != "PLANNER"]
+    if len(workers) <= 1:
+        return {}
+    seed = int.from_bytes(
+        hashlib.sha256(seed_text.encode("utf-8")).digest()[:8],
+        byteorder="big",
+        signed=False,
+    )
+    shuffled = list(workers)
+    random.Random(seed).shuffle(shuffled)
+    if shuffled == workers:
+        shuffled = shuffled[1:] + shuffled[:1]
+    return dict(zip(workers, shuffled))
+
+
+def _apply_agent_id_view(
+    events: list[dict[str, Any]],
+    *,
+    agent_id_view: str,
+    seed_text: str,
+    agent_id_salt: str = "",
+) -> list[dict[str, Any]]:
+    if agent_id_view == "original":
+        return events
+    if agent_id_view != "per_file_permutation":
+        raise ValueError(f"unknown agent_id_view: {agent_id_view}")
+    if not events:
+        return events
+    first_agents = events[0].get("agents") or {}
+    mapping = _per_file_agent_id_mapping(
+        list(first_agents.keys()),
+        f"{agent_id_salt}:{seed_text}",
+    )
+    if not mapping:
+        return events
+    return [_remap_agent_id_value(event, mapping) for event in events]
 
 
 def _percentile(values: list[float], percentile: float) -> float:
@@ -159,8 +223,13 @@ class NextAgentGlobalMemory:
     source_turn_transition_counts: dict[tuple[str, int], Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     contextual_transition_counts: dict[tuple[str, int, int], Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     outgoing_signature_transition_counts: dict[tuple[str, tuple[str, ...], int], Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    profile_signature_transition_counts: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
+    roster_position_transition_counts: dict[int, Counter[int]] = field(default_factory=lambda: defaultdict(Counter))
+    profile_position_transition_counts: dict[tuple[str, int], Counter[int]] = field(default_factory=lambda: defaultdict(Counter))
+    episodic_transition_examples: list[dict[str, Any]] = field(default_factory=list)
     source_number_delta_counts: dict[int, Counter[int]] = field(default_factory=lambda: defaultdict(Counter))
     first_main_targets: list[str] = field(default_factory=list)
+    first_target_profile_examples: list[dict[str, Any]] = field(default_factory=list)
     agent_profile_tokens: dict[str, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     agent_profile_seen: Counter[str] = field(default_factory=Counter)
 
@@ -172,6 +241,11 @@ class NextAgentGlobalMemory:
         outgoing_agents: list[str],
         round_index: int,
         source_turn_count: int | None = None,
+        current_agent_profile_text: str = "",
+        observed_next_agent_profile_text: str = "",
+        task_profile_text: str = "",
+        current_agent_roster_position: int | None = None,
+        observed_next_agent_roster_position: int | None = None,
     ) -> None:
         self.main_transition_counts[current_agent][observed_next_agent] += 1
         if observed_next_agent in outgoing_agents:
@@ -190,14 +264,67 @@ class NextAgentGlobalMemory:
             self.outgoing_signature_transition_counts[
                 (current_agent, tuple(outgoing_agents), source_turn_count)
             ][observed_next_agent] += 1
+        if current_agent_profile_text or observed_next_agent_profile_text or task_profile_text:
+            source_profile_signature = _agent_profile_signature(current_agent_profile_text)
+            target_profile_signature = _agent_profile_signature(observed_next_agent_profile_text)
+            if source_profile_signature and target_profile_signature:
+                self.profile_signature_transition_counts[source_profile_signature][
+                    target_profile_signature
+                ] += 1
+            if (
+                current_agent_roster_position is not None
+                and observed_next_agent_roster_position is not None
+                and current_agent_roster_position > 0
+                and observed_next_agent_roster_position > 0
+            ):
+                self.roster_position_transition_counts[current_agent_roster_position][
+                    observed_next_agent_roster_position
+                ] += 1
+                if source_profile_signature:
+                    self.profile_position_transition_counts[
+                        (source_profile_signature, current_agent_roster_position)
+                    ][observed_next_agent_roster_position] += 1
+            self.episodic_transition_examples.append(
+                {
+                    "current_agent": current_agent,
+                    "observed_next_agent": observed_next_agent,
+                    "source_turn_count": source_turn_count,
+                    "round_index": round_index,
+                    "outgoing_count": len(outgoing_agents),
+                    "target_rank": (
+                        outgoing_agents.index(observed_next_agent)
+                        if observed_next_agent in outgoing_agents
+                        else -1
+                    ),
+                    "current_profile_tokens": _token_vector(current_agent_profile_text),
+                    "target_profile_tokens": _token_vector(observed_next_agent_profile_text),
+                    "task_profile_tokens": _token_vector(task_profile_text),
+                    "current_profile_signature": source_profile_signature,
+                    "target_profile_signature": target_profile_signature,
+                    "current_agent_roster_position": current_agent_roster_position,
+                    "target_agent_roster_position": observed_next_agent_roster_position,
+                }
+            )
+            self.episodic_transition_examples = self.episodic_transition_examples[-800:]
 
     def update_file_summary(
         self,
         first_main_target: str | None,
         profile_texts: dict[str, str] | None = None,
+        task_profile_text: str = "",
     ) -> None:
         if first_main_target:
             self.first_main_targets.append(first_main_target)
+            target_profile_text = (profile_texts or {}).get(first_main_target, "")
+            if target_profile_text or task_profile_text:
+                self.first_target_profile_examples.append(
+                    {
+                        "target_agent": first_main_target,
+                        "target_profile_tokens": _token_vector(target_profile_text),
+                        "task_profile_tokens": _token_vector(task_profile_text),
+                    }
+                )
+                self.first_target_profile_examples = self.first_target_profile_examples[-400:]
         for agent_id, profile_text in (profile_texts or {}).items():
             self.agent_profile_tokens[agent_id].update(_token_vector(profile_text))
             self.agent_profile_seen[agent_id] += 1
@@ -352,6 +479,63 @@ _RECOVERY_EVENT_TYPES = {
 
 def _is_predictive_next_agent_step(current_event_type: str, next_event_type: str) -> bool:
     return current_event_type == "main_turn" and next_event_type not in _RECOVERY_EVENT_TYPES
+
+
+def _expected_next_agent_targets(
+    events: list[dict[str, Any]],
+    step_index: int,
+) -> tuple[list[str], str]:
+    if step_index >= len(events) - 1:
+        return [], "end_of_events"
+    event = events[step_index]
+    if _classify_event(event) != "main_turn":
+        next_event_type = _classify_event(events[step_index + 1])
+        if next_event_type in _RECOVERY_EVENT_TYPES:
+            return [], "next_event_recovery"
+        return [str(events[step_index + 1].get("agent_id") or "")], "next_event"
+
+    event_id = str(event.get("event_id") or "")
+    child_targets: list[str] = []
+    if event_id:
+        for candidate_event in events:
+            parent_ids = [str(parent_id) for parent_id in candidate_event.get("parent_event_ids") or []]
+            if event_id not in parent_ids:
+                continue
+            if _classify_event(candidate_event) in _RECOVERY_EVENT_TYPES:
+                continue
+            target_agent = str(candidate_event.get("agent_id") or "")
+            if target_agent:
+                child_targets.append(target_agent)
+    if child_targets:
+        return _ordered_agents(child_targets), "parent_child_events"
+
+    next_event_type = _classify_event(events[step_index + 1])
+    if next_event_type in _RECOVERY_EVENT_TYPES:
+        return [], "next_event_recovery"
+    return [str(events[step_index + 1].get("agent_id") or "")], "next_event"
+
+
+def _target_set_hit(expected_agent_ids: list[str], ranked: list[str], k: int) -> bool:
+    expected_set = {agent_id for agent_id in expected_agent_ids if agent_id}
+    return bool(expected_set.intersection(ranked[:k]))
+
+
+def _target_set_recall(expected_agent_ids: list[str], ranked: list[str], k: int) -> float:
+    expected_set = {agent_id for agent_id in expected_agent_ids if agent_id}
+    if not expected_set:
+        return 0.0
+    return len(expected_set.intersection(ranked[:k])) / len(expected_set)
+
+
+def _request_contains_exact_agent_marker(request_text: str, agent_id: str) -> bool:
+    if not agent_id:
+        return False
+    escaped = re.escape(agent_id)
+    patterns = (
+        rf"(?<![A-Za-z0-9_])You\s+are\s+{escaped}(?![A-Za-z0-9_])",
+        rf"(?<![A-Za-z0-9_])你\s*是\s*{escaped}(?![A-Za-z0-9_])",
+    )
+    return any(re.search(pattern, request_text) for pattern in patterns)
 
 
 def _infer_prompt_collaboration_edges(content: str) -> list[tuple[str, str]]:
@@ -543,19 +727,44 @@ _STOP_WORDS = {
 }
 
 
-def _text_tokens(text: str) -> list[str]:
+@lru_cache(maxsize=20000)
+def _text_tokens_cached(text: str) -> tuple[str, ...]:
     normalized = (text or "").lower()
     for source, target in _TOKEN_NORMALIZATIONS.items():
         normalized = normalized.replace(source, target)
-    return [
+    return tuple(
         token
         for token in re.findall(r"[a-z0-9]+", normalized)
         if len(token) > 2 and token not in _STOP_WORDS
-    ]
+    )
+
+
+def _text_tokens(text: str) -> list[str]:
+    return list(_text_tokens_cached(text or ""))
 
 
 def _token_vector(text: str) -> Counter[str]:
-    return Counter(_text_tokens(text))
+    return Counter(_text_tokens_cached(text or ""))
+
+
+@lru_cache(maxsize=20000)
+def _agent_profile_signature(profile_text: str) -> str:
+    tokens = [
+        token
+        for token in _text_tokens(profile_text)
+        if not token.startswith("agent") and token != "planner"
+    ]
+    if not tokens:
+        return ""
+    counts = Counter(tokens)
+    signature_tokens = [
+        token
+        for token, _ in sorted(
+            counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:14]
+    ]
+    return "profile:" + "|".join(signature_tokens)
 
 
 def _cosine_similarity(left: Counter[str], right: Counter[str]) -> float:
@@ -578,6 +787,10 @@ def _agent_profile_similarity(event: dict[str, Any], agent_id: str) -> float:
         _token_vector(str(event.get("task_profile") or "")),
         _token_vector(profile),
     )
+
+
+def _profile_score_candidates(candidates: list[str]) -> list[str]:
+    return list(dict.fromkeys(str(agent_id) for agent_id in candidates if str(agent_id)))
 
 
 def _visible_memory_text(content: str) -> str:
@@ -661,18 +874,46 @@ def _agent_profile_text(event: dict[str, Any], agent_id: str) -> str:
     return str(agent.get("profile") or "")
 
 
+def _agent_roster_position(event: dict[str, Any], agent_id: str) -> int:
+    if not agent_id or agent_id == "PLANNER":
+        return 0
+    worker_order = [
+        str(candidate)
+        for candidate in (event.get("agents") or {}).keys()
+        if str(candidate) != "PLANNER"
+    ]
+    try:
+        return worker_order.index(agent_id) + 1
+    except ValueError:
+        return 0
+
+
+def _profile_has_marker(normalized_profile: str, marker: str) -> bool:
+    escaped = re.escape(marker.lower())
+    if re.fullmatch(r"[a-z0-9_]+", marker):
+        return re.search(rf"(?<![a-z0-9_]){escaped}(?![a-z0-9_])", normalized_profile) is not None
+    return marker.lower() in normalized_profile
+
+
 def _role_tag_from_profile(profile_text: str) -> str | None:
     normalized = profile_text.lower()
+    is_coding_profile = "coding " in normalized or "solution.py" in normalized
     role_patterns = (
         ("analyst", ("coding analyst", "analyze_task", "decompose_task")),
-        ("implementation", ("implementation agent", "create_solution", "revise_solution", "coder")),
+        (
+            "implementation",
+            ("coding implementation agent", "create_solution", "revise_solution", "coder"),
+        ),
         ("tester", ("coding tester", "run_tests", "test_suite", "verification checks")),
         ("debugger", ("coding debugger", "run_and_debug", "diagnosing runtime failures")),
         ("reviewer", ("coding reviewer", "give_advice_and_revise", "code quality")),
     )
     for role, markers in role_patterns:
-        if any(marker in normalized for marker in markers):
-            return role
+        for marker in markers:
+            if not _profile_has_marker(normalized, marker):
+                continue
+            if marker.startswith("coding") or is_coding_profile:
+                return role
     return None
 
 
@@ -702,6 +943,199 @@ def _role_workflow_prior_scores(
             if role == preferred_role:
                 scores[agent_id] = max(scores.get(agent_id, 0.0), 80.0 - 16.0 * rank)
     return scores
+
+
+def _profile_signature_transition_prior_scores(
+    event: dict[str, Any],
+    *,
+    current_agent: str,
+    candidates: list[str],
+    next_global_memory: NextAgentGlobalMemory,
+    adaptive_cross_file_weight: float,
+    adaptive_cross_file_min_support: int,
+) -> dict[str, float]:
+    source_signature = _agent_profile_signature(_agent_profile_text(event, current_agent))
+    if not source_signature:
+        return {}
+    transition_counts = next_global_memory.profile_signature_transition_counts.get(
+        source_signature,
+        Counter(),
+    )
+    total = sum(transition_counts.values())
+    if total < adaptive_cross_file_min_support:
+        return {}
+    candidate_scores: dict[str, float] = {}
+    for candidate in candidates:
+        if candidate == "PLANNER":
+            continue
+        target_signature = _agent_profile_signature(_agent_profile_text(event, candidate))
+        if not target_signature:
+            continue
+        count = transition_counts.get(target_signature, 0)
+        if count <= 0:
+            continue
+        candidate_scores[candidate] = adaptive_cross_file_weight * count / total
+    return candidate_scores
+
+
+def _roster_position_transition_prior_scores(
+    event: dict[str, Any],
+    *,
+    current_agent: str,
+    candidates: list[str],
+    next_global_memory: NextAgentGlobalMemory,
+    adaptive_cross_file_weight: float,
+    adaptive_cross_file_min_support: int,
+) -> dict[str, float]:
+    source_position = _agent_roster_position(event, current_agent)
+    if source_position <= 0:
+        return {}
+    source_signature = _agent_profile_signature(_agent_profile_text(event, current_agent))
+    counters: list[tuple[Counter[int], float]] = [
+        (next_global_memory.roster_position_transition_counts[source_position], 0.75),
+    ]
+    if source_signature:
+        counters.append(
+            (
+                next_global_memory.profile_position_transition_counts[
+                    (source_signature, source_position)
+                ],
+                0.45,
+            )
+        )
+    candidate_positions = {
+        agent_id: _agent_roster_position(event, agent_id)
+        for agent_id in candidates
+        if agent_id != "PLANNER"
+    }
+    candidate_scores: Counter[str] = Counter()
+    for counter, scale in counters:
+        total = sum(counter.values())
+        if total < adaptive_cross_file_min_support:
+            continue
+        for candidate, target_position in candidate_positions.items():
+            if target_position <= 0:
+                continue
+            count = counter.get(target_position, 0)
+            if count <= 0:
+                continue
+            candidate_scores[candidate] += adaptive_cross_file_weight * scale * count / total
+    return dict(candidate_scores)
+
+
+def _episodic_cross_file_prior_scores(
+    event: dict[str, Any],
+    *,
+    current_agent: str,
+    candidates: list[str],
+    source_turn_count: int,
+    round_index: int,
+    next_global_memory: NextAgentGlobalMemory,
+    adaptive_cross_file_weight: float,
+) -> dict[str, float]:
+    examples = next_global_memory.episodic_transition_examples
+    if not examples or not candidates:
+        return {}
+    current_profile_tokens = _token_vector(_agent_profile_text(event, current_agent))
+    task_profile_tokens = _token_vector(str(event.get("task_profile") or ""))
+    candidate_profile_tokens = {
+        agent_id: _token_vector(_agent_profile_text(event, agent_id))
+        for agent_id in candidates
+        if agent_id != "PLANNER"
+    }
+    if not candidate_profile_tokens:
+        return {}
+
+    candidate_scores: Counter[str] = Counter()
+    for example in examples[-400:]:
+        example_source_turn = example.get("source_turn_count")
+        turn_distance = (
+            abs(int(example_source_turn) - source_turn_count)
+            if example_source_turn is not None
+            else 3
+        )
+        if turn_distance > 2:
+            continue
+        example_round_index = int(example.get("round_index", -10))
+        round_distance = abs(example_round_index - round_index)
+        if round_distance > 2:
+            continue
+
+        current_similarity = _cosine_similarity(
+            current_profile_tokens,
+            example.get("current_profile_tokens") or Counter(),
+        )
+        task_similarity = _cosine_similarity(
+            task_profile_tokens,
+            example.get("task_profile_tokens") or Counter(),
+        )
+        turn_similarity = 1.0 / (1.0 + turn_distance)
+        round_similarity = 1.0 / (1.0 + round_distance)
+        structural_similarity = 0.5 * turn_similarity + 0.5 * round_similarity
+        source_similarity = (
+            0.45 * current_similarity
+            + 0.25 * task_similarity
+            + 0.30 * structural_similarity
+        )
+        if source_similarity < 0.28:
+            continue
+
+        target_tokens = example.get("target_profile_tokens") or Counter()
+        target_rank = int(example.get("target_rank", -1))
+        for candidate, candidate_tokens in candidate_profile_tokens.items():
+            target_similarity = _cosine_similarity(candidate_tokens, target_tokens)
+            if target_similarity <= 0.0:
+                continue
+            rank_similarity = (
+                1.0
+                if 0 <= target_rank < len(candidates) and candidates[target_rank] == candidate
+                else 0.0
+            )
+            candidate_scores[candidate] += (
+                adaptive_cross_file_weight
+                * 0.18
+                * source_similarity
+                * (0.80 * target_similarity + 0.20 * rank_similarity)
+            )
+
+    return dict(candidate_scores)
+
+
+def _first_target_profile_prior_scores(
+    event: dict[str, Any],
+    *,
+    candidates: list[str],
+    next_global_memory: NextAgentGlobalMemory,
+    adaptive_cross_file_weight: float,
+) -> dict[str, float]:
+    examples = next_global_memory.first_target_profile_examples
+    if not examples or not candidates:
+        return {}
+    task_profile_tokens = _token_vector(str(event.get("task_profile") or ""))
+    candidate_profile_tokens = {
+        agent_id: _token_vector(_agent_profile_text(event, agent_id))
+        for agent_id in candidates
+        if agent_id != "PLANNER"
+    }
+    scores: Counter[str] = Counter()
+    for example in examples[-200:]:
+        task_similarity = _cosine_similarity(
+            task_profile_tokens,
+            example.get("task_profile_tokens") or Counter(),
+        )
+        if task_similarity <= 0.02:
+            continue
+        target_tokens = example.get("target_profile_tokens") or Counter()
+        for candidate, candidate_tokens in candidate_profile_tokens.items():
+            target_similarity = _cosine_similarity(candidate_tokens, target_tokens)
+            if target_similarity <= 0.0:
+                continue
+            scores[candidate] += (
+                adaptive_cross_file_weight
+                * 0.10
+                * (0.35 * task_similarity + 0.65 * target_similarity)
+            )
+    return dict(scores)
 
 
 def _visible_agent_context_features(
@@ -759,17 +1193,27 @@ def _rank_next_agents(
     use_cross_file_memory: bool,
     cross_file_stat_weight: float,
     enable_adaptive_cross_file_prior: bool,
+    enable_profile_signature_transition_prior: bool,
+    enable_roster_position_transition_prior: bool,
+    enable_episodic_cross_file_prior: bool,
     adaptive_cross_file_weight: float,
     adaptive_cross_file_min_support: int,
     adaptive_cross_file_min_confidence: float,
     adaptive_cross_file_min_profile_stability: float,
+    enable_graph_order_prior: bool,
+    enable_role_workflow_prior: bool,
+    enable_local_transition_memory: bool,
+    online_evidence_mode: str,
     enable_research_schedule_prior: bool,
     enable_research_meta_prior: bool,
+    enable_profile_similarity_prior: bool,
+    profile_similarity_mode: str = "full",
     enable_idf_profile_prior: bool,
     include_visible_agent_context: bool,
     visible_context_similarity_weight: float,
     visible_context_length_weight: float,
     agents: list[str],
+    candidate_scope: str = "visible_graph",
 ) -> tuple[list[str], dict[str, float], dict[str, Any]]:
     current_agent = str(event.get("agent_id") or "")
     event_type = _classify_event(event)
@@ -787,6 +1231,10 @@ def _rank_next_agents(
     meta_prior_scores: dict[str, float] = {}
     adaptive_cross_file_scores: dict[str, float] = {}
     contextual_cross_file_scores: dict[str, float] = {}
+    episodic_cross_file_scores: dict[str, float] = {}
+    profile_signature_transition_scores: dict[str, float] = {}
+    roster_position_transition_scores: dict[str, float] = {}
+    first_target_profile_scores: dict[str, float] = {}
     adaptive_cross_file_profile_stability = 0.0
     visible_context_scores: dict[str, float] = {}
     visible_context_features: dict[str, dict[str, float]] = {}
@@ -828,33 +1276,45 @@ def _rank_next_agents(
             reason = "planner_starts_next_round"
             graph_source = "scheduler_round_state"
     elif event_type == "main_turn":
+        transition_only = online_evidence_mode == "transition_only"
         outgoing_agents, graph_source = _infer_outgoing_agents_with_source(event, agents)
-        source_turn_count = sum(next_state.local_main_transition_counts[current_agent].values())
+        source_turn_count = (
+            sum(next_state.local_main_transition_counts[current_agent].values())
+            if enable_local_transition_memory
+            else 0
+        )
         round_index = (
             next_state.round_main_agents.index(current_agent)
             if current_agent in next_state.round_main_agents
             else len(next_state.round_main_agents)
         )
+        main_turn_index = sum(next_state.local_file_target_counts.values())
         include_self_candidate = False
         if current_agent in agents and current_agent not in outgoing_agents:
-            local_source_counts = next_state.local_main_transition_counts[current_agent]
-            local_total = sum(local_source_counts.values())
-            include_self_candidate = (
-                local_total > 0
-                and local_source_counts[current_agent] / max(local_total, 1) >= 0.5
-            )
+            if enable_local_transition_memory:
+                local_source_counts = next_state.local_main_transition_counts[current_agent]
+                local_total = sum(local_source_counts.values())
+                include_self_candidate = (
+                    local_total > 0
+                    and local_source_counts[current_agent] / max(local_total, 1) >= 0.5
+                )
             if use_cross_file_memory and enable_adaptive_cross_file_prior:
-                for self_counter in (
-                    next_global_memory.source_turn_transition_counts[
-                        (current_agent, source_turn_count)
-                    ],
-                    next_global_memory.contextual_transition_counts[
-                        (current_agent, source_turn_count, round_index)
-                    ],
-                    next_global_memory.outgoing_signature_transition_counts[
-                        (current_agent, tuple(outgoing_agents), source_turn_count)
-                    ],
-                ):
+                self_counters = (
+                    (next_global_memory.main_transition_counts[current_agent],)
+                    if transition_only
+                    else (
+                        next_global_memory.source_turn_transition_counts[
+                            (current_agent, source_turn_count)
+                        ],
+                        next_global_memory.contextual_transition_counts[
+                            (current_agent, source_turn_count, round_index)
+                        ],
+                        next_global_memory.outgoing_signature_transition_counts[
+                            (current_agent, tuple(outgoing_agents), source_turn_count)
+                        ],
+                    )
+                )
+                for self_counter in self_counters:
                     total = sum(self_counter.values())
                     if total < adaptive_cross_file_min_support:
                         continue
@@ -865,27 +1325,90 @@ def _rank_next_agents(
                     ):
                         include_self_candidate = True
                         break
-        candidates = list(outgoing_agents)
-        if include_self_candidate:
-            candidates.append(current_agent)
-        if "PLANNER" in agents:
-            candidates.append("PLANNER")
+        if candidate_scope == "all_agents":
+            candidates = list(agents)
+            graph_source = f"{graph_source}+all_agents_candidate_scope"
+        elif candidate_scope == "all_worker_agents":
+            candidates = [agent_id for agent_id in agents if agent_id != "PLANNER"]
+            graph_source = f"{graph_source}+all_worker_agents_candidate_scope"
+        elif candidate_scope == "visible_graph":
+            candidates = list(outgoing_agents)
+            if include_self_candidate:
+                candidates.append(current_agent)
+            if "PLANNER" in agents:
+                candidates.append("PLANNER")
+        else:
+            raise ValueError(f"unknown candidate_scope: {candidate_scope}")
+        if transition_only:
+            candidates = _ordered_agents(candidates)
         candidate_set = set(candidates)
         scores = Counter({agent_id: 0.0 for agent_id in candidates})
-        for rank, agent_id in enumerate(candidates):
-            scores[agent_id] += 0.0001 * (len(candidates) - rank)
-        reason = "main_turn_graph_semantic_online_memory"
-
-        for rank, agent_id in enumerate(outgoing_agents):
-            scores[agent_id] += 2.0 * (len(outgoing_agents) - rank) / max(1, len(outgoing_agents))
-
-        role_workflow_prior_scores = _role_workflow_prior_scores(
-            event,
-            current_agent=current_agent,
-            candidates=candidates,
+        if not transition_only:
+            for rank, agent_id in enumerate(candidates):
+                scores[agent_id] += 0.0001 * (len(candidates) - rank)
+        reason = (
+            "main_turn_graph_transition_only_online_memory"
+            if transition_only
+            else "main_turn_graph_semantic_online_memory"
         )
-        for agent_id, role_score in role_workflow_prior_scores.items():
-            scores[agent_id] += role_score
+
+        if enable_graph_order_prior:
+            for rank, agent_id in enumerate(outgoing_agents):
+                scores[agent_id] += 2.0 * (len(outgoing_agents) - rank) / max(1, len(outgoing_agents))
+
+        if enable_role_workflow_prior:
+            role_workflow_prior_scores = _role_workflow_prior_scores(
+                event,
+                current_agent=current_agent,
+                candidates=candidates,
+            )
+            for agent_id, role_score in role_workflow_prior_scores.items():
+                scores[agent_id] += role_score
+
+        if (
+            use_cross_file_memory
+            and enable_profile_signature_transition_prior
+        ):
+            profile_signature_transition_scores = _profile_signature_transition_prior_scores(
+                event,
+                current_agent=current_agent,
+                candidates=candidates,
+                next_global_memory=next_global_memory,
+                adaptive_cross_file_weight=adaptive_cross_file_weight,
+                adaptive_cross_file_min_support=adaptive_cross_file_min_support,
+            )
+            for agent_id, signature_score in profile_signature_transition_scores.items():
+                scores[agent_id] += signature_score
+        if (
+            use_cross_file_memory
+            and enable_roster_position_transition_prior
+        ):
+            roster_position_transition_scores = _roster_position_transition_prior_scores(
+                event,
+                current_agent=current_agent,
+                candidates=candidates,
+                next_global_memory=next_global_memory,
+                adaptive_cross_file_weight=adaptive_cross_file_weight,
+                adaptive_cross_file_min_support=adaptive_cross_file_min_support,
+            )
+            for agent_id, position_score in roster_position_transition_scores.items():
+                scores[agent_id] += position_score
+        if (
+            use_cross_file_memory
+            and enable_episodic_cross_file_prior
+        ):
+            if not transition_only:
+                episodic_cross_file_scores = _episodic_cross_file_prior_scores(
+                    event,
+                    current_agent=current_agent,
+                    candidates=candidates,
+                    source_turn_count=source_turn_count,
+                    round_index=round_index,
+                    next_global_memory=next_global_memory,
+                    adaptive_cross_file_weight=adaptive_cross_file_weight,
+                )
+                for agent_id, episodic_score in episodic_cross_file_scores.items():
+                    scores[agent_id] += episodic_score
 
         if enable_research_schedule_prior:
             if outgoing_agents:
@@ -903,88 +1426,114 @@ def _rank_next_agents(
                     schedule_prior_scores.get("agent1", 0.0) + 5.0
                 )
 
-        task_profile_scores = {
-            agent_id: _agent_profile_similarity(event, agent_id)
-            for agent_id in outgoing_agents
+        profile_mode = "off" if not enable_profile_similarity_prior else profile_similarity_mode
+        use_task_profile = profile_mode in {"task", "full"}
+        use_memory_prompt_profile = profile_mode == "full"
+        memory_text = (
+            _visible_memory_text(content)
+            if use_memory_prompt_profile or include_visible_agent_context
+            else ""
+        )
+        prompt_text = _visible_prompt_text(content) if use_memory_prompt_profile else ""
+        profile_score_candidates = _profile_score_candidates(candidates)
+        profile_rank_index = {
+            agent_id: index for index, agent_id in enumerate(profile_score_candidates)
         }
-        memory_text = _visible_memory_text(content)
-        prompt_text = _visible_prompt_text(content)
-        memory_profile_scores = {
-            agent_id: _profile_similarity_against_text(
-                event=event,
-                agent_id=agent_id,
-                text=memory_text,
-            )
-            for agent_id in outgoing_agents
-        }
-        prompt_profile_scores = {
-            agent_id: _profile_similarity_against_text(
-                event=event,
-                agent_id=agent_id,
-                text=prompt_text,
-            )
-            for agent_id in outgoing_agents
-        }
-        if enable_idf_profile_prior:
+        if use_task_profile:
+            task_profile_scores = {
+                agent_id: _agent_profile_similarity(event, agent_id)
+                for agent_id in profile_score_candidates
+            }
+        if use_memory_prompt_profile:
+            memory_profile_scores = {
+                agent_id: _profile_similarity_against_text(
+                    event=event,
+                    agent_id=agent_id,
+                    text=memory_text,
+                )
+                for agent_id in profile_score_candidates
+            }
+            prompt_profile_scores = {
+                agent_id: _profile_similarity_against_text(
+                    event=event,
+                    agent_id=agent_id,
+                    text=prompt_text,
+                )
+                for agent_id in profile_score_candidates
+            }
+        if use_memory_prompt_profile and enable_idf_profile_prior:
             task_idf_profile_scores = _candidate_idf_profile_scores(
                 event=event,
-                candidates=outgoing_agents,
+                candidates=profile_score_candidates,
                 text=str(event.get("task_profile") or ""),
             )
             memory_idf_profile_scores = _candidate_idf_profile_scores(
                 event=event,
-                candidates=outgoing_agents,
+                candidates=profile_score_candidates,
                 text=memory_text,
             )
             prompt_idf_profile_scores = _candidate_idf_profile_scores(
                 event=event,
-                candidates=outgoing_agents,
+                candidates=profile_score_candidates,
                 text=prompt_text,
             )
-        task_profile_ranked = [
-            agent_id
-            for agent_id, _ in sorted(
-                task_profile_scores.items(),
-                key=lambda item: (item[1], -outgoing_agents.index(item[0])),
-                reverse=True,
-            )
-        ]
-        memory_profile_ranked = [
-            agent_id
-            for agent_id, _ in sorted(
-                memory_profile_scores.items(),
-                key=lambda item: (item[1], -outgoing_agents.index(item[0])),
-                reverse=True,
-            )
-        ]
-        prompt_profile_ranked = [
-            agent_id
-            for agent_id, _ in sorted(
-                prompt_profile_scores.items(),
-                key=lambda item: (item[1], -outgoing_agents.index(item[0])),
-                reverse=True,
-            )
-        ]
-        for agent_id in outgoing_agents:
-            scores[agent_id] += 20.0 * task_profile_scores.get(agent_id, 0.0)
-            scores[agent_id] += 30.0 * memory_profile_scores.get(agent_id, 0.0)
-            scores[agent_id] += 20.0 * prompt_profile_scores.get(agent_id, 0.0)
-            if enable_idf_profile_prior:
-                scores[agent_id] += 20.0 * task_idf_profile_scores.get(agent_id, 0.0)
-                scores[agent_id] += 24.0 * memory_idf_profile_scores.get(agent_id, 0.0)
-                scores[agent_id] += 12.0 * prompt_idf_profile_scores.get(agent_id, 0.0)
-        for rank, agent_id in enumerate(task_profile_ranked):
-            scores[agent_id] += 0.5 * (len(task_profile_ranked) - rank) / max(1, len(task_profile_ranked))
-        for rank, agent_id in enumerate(memory_profile_ranked):
-            scores[agent_id] += 4.0 * (len(memory_profile_ranked) - rank) / max(1, len(memory_profile_ranked))
-        for rank, agent_id in enumerate(prompt_profile_ranked):
-            scores[agent_id] += 1.0 * (len(prompt_profile_ranked) - rank) / max(1, len(prompt_profile_ranked))
+        if use_task_profile:
+            task_profile_ranked = [
+                agent_id
+                for agent_id, _ in sorted(
+                    task_profile_scores.items(),
+                    key=lambda item: (
+                        item[1],
+                        -profile_rank_index.get(item[0], len(profile_rank_index)),
+                    ),
+                    reverse=True,
+                )
+            ]
+            for agent_id in profile_score_candidates:
+                scores[agent_id] += 20.0 * task_profile_scores.get(agent_id, 0.0)
+                if enable_idf_profile_prior and use_memory_prompt_profile:
+                    scores[agent_id] += 20.0 * task_idf_profile_scores.get(agent_id, 0.0)
+            for rank, agent_id in enumerate(task_profile_ranked):
+                scores[agent_id] += 0.5 * (len(task_profile_ranked) - rank) / max(1, len(task_profile_ranked))
+        if use_memory_prompt_profile:
+            memory_profile_ranked = [
+                agent_id
+                for agent_id, _ in sorted(
+                    memory_profile_scores.items(),
+                    key=lambda item: (
+                        item[1],
+                        -profile_rank_index.get(item[0], len(profile_rank_index)),
+                    ),
+                    reverse=True,
+                )
+            ]
+            prompt_profile_ranked = [
+                agent_id
+                for agent_id, _ in sorted(
+                    prompt_profile_scores.items(),
+                    key=lambda item: (
+                        item[1],
+                        -profile_rank_index.get(item[0], len(profile_rank_index)),
+                    ),
+                    reverse=True,
+                )
+            ]
+            for agent_id in profile_score_candidates:
+                scores[agent_id] += 30.0 * memory_profile_scores.get(agent_id, 0.0)
+                scores[agent_id] += 20.0 * prompt_profile_scores.get(agent_id, 0.0)
+                if enable_idf_profile_prior:
+                    scores[agent_id] += 24.0 * memory_idf_profile_scores.get(agent_id, 0.0)
+                    scores[agent_id] += 12.0 * prompt_idf_profile_scores.get(agent_id, 0.0)
+            for rank, agent_id in enumerate(memory_profile_ranked):
+                scores[agent_id] += 4.0 * (len(memory_profile_ranked) - rank) / max(1, len(memory_profile_ranked))
+            for rank, agent_id in enumerate(prompt_profile_ranked):
+                scores[agent_id] += 1.0 * (len(prompt_profile_ranked) - rank) / max(1, len(prompt_profile_ranked))
 
         if include_visible_agent_context:
             visible_context_features = _visible_agent_context_features(
                 event=event,
                 agents=agents,
-                candidates=outgoing_agents,
+                candidates=profile_score_candidates,
                 memory_text=memory_text,
             )
             for agent_id, features in visible_context_features.items():
@@ -1001,7 +1550,6 @@ def _rank_next_agents(
             if use_cross_file_memory and next_global_memory.first_main_targets:
                 previous_first_target = next_global_memory.first_main_targets[-1]
                 if previous_first_target in candidate_set:
-                    main_turn_index = sum(next_state.local_file_target_counts.values())
                     previous_first_bonus = 10.0
                     if main_turn_index == 0:
                         previous_first_bonus -= 5.0
@@ -1020,85 +1568,110 @@ def _rank_next_agents(
                     meta_prior_scores.get(next_state.local_second_main_target, 0.0) + 1.0
                 )
 
-        visible_targets = _target_refs_in_visible_history(content, candidates)
-        for target_agent, count in Counter(visible_targets[-8:]).items():
-            scores[target_agent] -= 8.0 * count
-            online_calibration_scores[target_agent] = (
-                online_calibration_scores.get(target_agent, 0.0) - 8.0 * count
+        if (
+            use_cross_file_memory
+            and enable_adaptive_cross_file_prior
+            and use_task_profile
+            and main_turn_index == 0
+        ):
+            first_target_profile_scores = _first_target_profile_prior_scores(
+                event,
+                candidates=candidates,
+                next_global_memory=next_global_memory,
+                adaptive_cross_file_weight=adaptive_cross_file_weight,
             )
-        if visible_targets:
-            scores[visible_targets[-1]] += 4.0
-            online_calibration_scores[visible_targets[-1]] = (
-                online_calibration_scores.get(visible_targets[-1], 0.0) + 4.0
-            )
-            for target_agent in set(visible_targets[-4:]):
-                scores[target_agent] -= 20.0
-                online_calibration_scores[target_agent] = (
-                    online_calibration_scores.get(target_agent, 0.0) - 20.0
-                )
+            for agent_id, first_target_score in first_target_profile_scores.items():
+                scores[agent_id] += first_target_score
 
-        for target_agent, count in next_state.local_main_transition_counts[current_agent].items():
-            if target_agent in candidate_set:
-                scores[target_agent] += 12.0 * count
+        visible_targets: list[str] = []
+        if not transition_only:
+            visible_targets = _target_refs_in_visible_history(content, candidates)
+            for target_agent, count in Counter(visible_targets[-8:]).items():
+                scores[target_agent] -= 8.0 * count
                 online_calibration_scores[target_agent] = (
-                    online_calibration_scores.get(target_agent, 0.0) + 12.0 * count
+                    online_calibration_scores.get(target_agent, 0.0) - 8.0 * count
                 )
-        last_target = next_state.local_last_target_by_source.get(current_agent)
-        if last_target in candidate_set:
-            scores[last_target] += 0.0
-        for rank, count in next_state.local_outgoing_rank_counts[current_agent].items():
-            if 0 <= rank < len(outgoing_agents):
-                scores[outgoing_agents[rank]] += 1.0 * count
-        for target_agent, count in next_state.local_round_index_counts[round_index].items():
-            if target_agent in candidate_set:
-                scores[target_agent] += 4.0 * count
-                online_calibration_scores[target_agent] = (
-                    online_calibration_scores.get(target_agent, 0.0) + 4.0 * count
+            if visible_targets:
+                scores[visible_targets[-1]] += 4.0
+                online_calibration_scores[visible_targets[-1]] = (
+                    online_calibration_scores.get(visible_targets[-1], 0.0) + 4.0
                 )
-        for target_agent, count in next_state.local_round_target_counts.items():
-            if target_agent in candidate_set:
-                scores[target_agent] += 3.0 * count
-                online_calibration_scores[target_agent] = (
-                    online_calibration_scores.get(target_agent, 0.0) + 3.0 * count
-                )
-        for target_agent, count in next_state.local_file_target_counts.items():
-            if target_agent in candidate_set:
-                scores[target_agent] += 3.0 * count
-                online_calibration_scores[target_agent] = (
-                    online_calibration_scores.get(target_agent, 0.0) + 3.0 * count
-                )
-        for target_agent, count in Counter(next_state.local_recent_targets[-3:]).items():
-            if target_agent in candidate_set:
-                scores[target_agent] += 0.5 * count
-                online_calibration_scores[target_agent] = (
-                    online_calibration_scores.get(target_agent, 0.0) + 0.5 * count
-                )
-        if next_state.local_file_target_counts:
-            hub_agent, hub_count = next_state.local_file_target_counts.most_common(1)[0]
-            observed_count = sum(next_state.local_file_target_counts.values())
-            if (
-                hub_agent in outgoing_agents
-                and hub_agent != current_agent
-                and hub_count >= 2
-                and hub_count / max(observed_count, 1) >= 0.45
-            ):
-                hub_bonus = min(10.0, 2.0 * hub_count)
-                scores[hub_agent] += hub_bonus
-                online_calibration_scores[hub_agent] = (
-                    online_calibration_scores.get(hub_agent, 0.0) + hub_bonus
-                )
-        seen_for_source = next_state.source_seen_targets[current_agent]
-        unseen_outgoing = [agent_id for agent_id in outgoing_agents if seen_for_source[agent_id] == 0]
-        if visible_targets and unseen_outgoing and len(outgoing_agents) <= 4:
-            for target_agent in unseen_outgoing:
-                coverage_bonus = 3.0
-                scores[target_agent] += coverage_bonus
-                online_calibration_scores[target_agent] = (
-                    online_calibration_scores.get(target_agent, 0.0) + coverage_bonus
-                )
+                for target_agent in set(visible_targets[-4:]):
+                    scores[target_agent] -= 20.0
+                    online_calibration_scores[target_agent] = (
+                        online_calibration_scores.get(target_agent, 0.0) - 20.0
+                    )
+
+        if enable_local_transition_memory:
+            for target_agent, count in next_state.local_main_transition_counts[current_agent].items():
+                if target_agent in candidate_set:
+                    scores[target_agent] += 12.0 * count
+                    online_calibration_scores[target_agent] = (
+                        online_calibration_scores.get(target_agent, 0.0) + 12.0 * count
+                    )
+        if enable_local_transition_memory and not transition_only:
+            last_target = next_state.local_last_target_by_source.get(current_agent)
+            if last_target in candidate_set:
+                scores[last_target] += 0.0
+            for rank, count in next_state.local_outgoing_rank_counts[current_agent].items():
+                if 0 <= rank < len(outgoing_agents):
+                    scores[outgoing_agents[rank]] += 1.0 * count
+            for target_agent, count in next_state.local_round_index_counts[round_index].items():
+                if target_agent in candidate_set:
+                    scores[target_agent] += 4.0 * count
+                    online_calibration_scores[target_agent] = (
+                        online_calibration_scores.get(target_agent, 0.0) + 4.0 * count
+                    )
+            for target_agent, count in next_state.local_round_target_counts.items():
+                if target_agent in candidate_set:
+                    scores[target_agent] += 3.0 * count
+                    online_calibration_scores[target_agent] = (
+                        online_calibration_scores.get(target_agent, 0.0) + 3.0 * count
+                    )
+            for target_agent, count in next_state.local_file_target_counts.items():
+                if target_agent in candidate_set:
+                    scores[target_agent] += 3.0 * count
+                    online_calibration_scores[target_agent] = (
+                        online_calibration_scores.get(target_agent, 0.0) + 3.0 * count
+                    )
+            for target_agent, count in Counter(next_state.local_recent_targets[-3:]).items():
+                if target_agent in candidate_set:
+                    scores[target_agent] += 0.5 * count
+                    online_calibration_scores[target_agent] = (
+                        online_calibration_scores.get(target_agent, 0.0) + 0.5 * count
+                    )
+            if next_state.local_file_target_counts:
+                hub_agent, hub_count = next_state.local_file_target_counts.most_common(1)[0]
+                observed_count = sum(next_state.local_file_target_counts.values())
+                if (
+                    hub_agent in outgoing_agents
+                    and hub_agent != current_agent
+                    and hub_count >= 2
+                    and hub_count / max(observed_count, 1) >= 0.45
+                ):
+                    hub_bonus = min(10.0, 2.0 * hub_count)
+                    scores[hub_agent] += hub_bonus
+                    online_calibration_scores[hub_agent] = (
+                        online_calibration_scores.get(hub_agent, 0.0) + hub_bonus
+                    )
+            seen_for_source = next_state.source_seen_targets[current_agent]
+            unseen_outgoing = [
+                agent_id for agent_id in outgoing_agents if seen_for_source[agent_id] == 0
+            ]
+            if visible_targets and unseen_outgoing and len(outgoing_agents) <= 4:
+                for target_agent in unseen_outgoing:
+                    coverage_bonus = 3.0
+                    scores[target_agent] += coverage_bonus
+                    online_calibration_scores[target_agent] = (
+                        online_calibration_scores.get(target_agent, 0.0) + coverage_bonus
+                    )
 
         if use_cross_file_memory and enable_adaptive_cross_file_prior:
-            profile_stability = next_global_memory.profile_stability(event, current_agent)
+            profile_stability = (
+                1.0
+                if adaptive_cross_file_min_profile_stability <= 0.0
+                else next_global_memory.profile_stability(event, current_agent)
+            )
             adaptive_cross_file_profile_stability = profile_stability
 
             def apply_adaptive_counter(
@@ -1137,54 +1710,55 @@ def _rank_next_agents(
                 weight=adaptive_cross_file_weight,
                 output_scores=adaptive_cross_file_scores,
             )
-            apply_adaptive_counter(
-                next_global_memory.source_turn_transition_counts[
-                    (current_agent, source_turn_count)
-                ],
-                weight=0.35 * adaptive_cross_file_weight,
-                output_scores=contextual_cross_file_scores,
-            )
-            apply_adaptive_counter(
-                next_global_memory.contextual_transition_counts[
-                    (current_agent, source_turn_count, round_index)
-                ],
-                weight=0.55 * adaptive_cross_file_weight,
-                output_scores=contextual_cross_file_scores,
-            )
-            apply_adaptive_counter(
-                next_global_memory.outgoing_signature_transition_counts[
-                    (current_agent, tuple(outgoing_agents), source_turn_count)
-                ],
-                weight=0.65 * adaptive_cross_file_weight,
-                output_scores=contextual_cross_file_scores,
-            )
+            if not transition_only:
+                apply_adaptive_counter(
+                    next_global_memory.source_turn_transition_counts[
+                        (current_agent, source_turn_count)
+                    ],
+                    weight=0.35 * adaptive_cross_file_weight,
+                    output_scores=contextual_cross_file_scores,
+                )
+                apply_adaptive_counter(
+                    next_global_memory.contextual_transition_counts[
+                        (current_agent, source_turn_count, round_index)
+                    ],
+                    weight=0.55 * adaptive_cross_file_weight,
+                    output_scores=contextual_cross_file_scores,
+                )
+                apply_adaptive_counter(
+                    next_global_memory.outgoing_signature_transition_counts[
+                        (current_agent, tuple(outgoing_agents), source_turn_count)
+                    ],
+                    weight=0.65 * adaptive_cross_file_weight,
+                    output_scores=contextual_cross_file_scores,
+                )
 
-            rank_counts = next_global_memory.outgoing_rank_counts[current_agent]
-            total_rank_count = sum(rank_counts.values())
-            if total_rank_count >= adaptive_cross_file_min_support:
-                ordered_ranks = rank_counts.most_common()
-                top_rank, top_count = ordered_ranks[0]
-                second_count = ordered_ranks[1][1] if len(ordered_ranks) > 1 else 0
-                confidence = top_count / total_rank_count
-                margin = (top_count - second_count) / total_rank_count
-                if (
-                    0 <= top_rank < len(outgoing_agents)
-                    and confidence >= adaptive_cross_file_min_confidence
-                    and profile_stability >= adaptive_cross_file_min_profile_stability
-                    and margin > 0.0
-                ):
-                    target_agent = outgoing_agents[top_rank]
-                    bonus = (
-                        0.5
-                        * adaptive_cross_file_weight
-                        * profile_stability
-                        * confidence
-                        * (0.5 + margin)
-                    )
-                    scores[target_agent] += bonus
-                    adaptive_cross_file_scores[target_agent] = (
-                        adaptive_cross_file_scores.get(target_agent, 0.0) + bonus
-                    )
+                rank_counts = next_global_memory.outgoing_rank_counts[current_agent]
+                total_rank_count = sum(rank_counts.values())
+                if total_rank_count >= adaptive_cross_file_min_support:
+                    ordered_ranks = rank_counts.most_common()
+                    top_rank, top_count = ordered_ranks[0]
+                    second_count = ordered_ranks[1][1] if len(ordered_ranks) > 1 else 0
+                    confidence = top_count / total_rank_count
+                    margin = (top_count - second_count) / total_rank_count
+                    if (
+                        0 <= top_rank < len(outgoing_agents)
+                        and confidence >= adaptive_cross_file_min_confidence
+                        and profile_stability >= adaptive_cross_file_min_profile_stability
+                        and margin > 0.0
+                    ):
+                        target_agent = outgoing_agents[top_rank]
+                        bonus = (
+                            0.5
+                            * adaptive_cross_file_weight
+                            * profile_stability
+                            * confidence
+                            * (0.5 + margin)
+                        )
+                        scores[target_agent] += bonus
+                        adaptive_cross_file_scores[target_agent] = (
+                            adaptive_cross_file_scores.get(target_agent, 0.0) + bonus
+                        )
 
         if (
             use_cross_file_memory
@@ -1194,29 +1768,34 @@ def _rank_next_agents(
             for target_agent, count in next_global_memory.main_transition_counts[current_agent].items():
                 if target_agent in candidate_set:
                     scores[target_agent] += cross_file_stat_weight * 0.5 * count
-            for rank, count in next_global_memory.outgoing_rank_counts[current_agent].items():
-                if 0 <= rank < len(outgoing_agents):
-                    scores[outgoing_agents[rank]] += cross_file_stat_weight * 1.0 * count
-            for target_agent, count in next_global_memory.round_index_counts[round_index].items():
-                if target_agent in candidate_set:
-                    scores[target_agent] += cross_file_stat_weight * 0.5 * count
-            source_number = _agent_order_key(current_agent)[1]
-            if source_number < 10**8:
-                for delta, count in next_global_memory.source_number_delta_counts[source_number].items():
-                    target_agent = f"agent{source_number + delta}"
+            if not transition_only:
+                for rank, count in next_global_memory.outgoing_rank_counts[current_agent].items():
+                    if 0 <= rank < len(outgoing_agents):
+                        scores[outgoing_agents[rank]] += cross_file_stat_weight * 1.0 * count
+                for target_agent, count in next_global_memory.round_index_counts[round_index].items():
                     if target_agent in candidate_set:
                         scores[target_agent] += cross_file_stat_weight * 0.5 * count
+                source_number = _agent_order_key(current_agent)[1]
+                if source_number < 10**8:
+                    for delta, count in next_global_memory.source_number_delta_counts[source_number].items():
+                        target_agent = f"agent{source_number + delta}"
+                        if target_agent in candidate_set:
+                            scores[target_agent] += cross_file_stat_weight * 0.5 * count
 
-        non_planner_agents = {agent_id for agent_id in agents if agent_id != "PLANNER"}
-        if set(next_state.round_main_agents) | {current_agent} >= non_planner_agents:
-            scores["PLANNER"] += 8.0
-            online_calibration_scores["PLANNER"] = (
-                online_calibration_scores.get("PLANNER", 0.0) + 8.0
-            )
+        if not transition_only:
+            non_planner_agents = {agent_id for agent_id in agents if agent_id != "PLANNER"}
+            if set(next_state.round_main_agents) | {current_agent} >= non_planner_agents:
+                scores["PLANNER"] += 8.0
+                online_calibration_scores["PLANNER"] = (
+                    online_calibration_scores.get("PLANNER", 0.0) + 8.0
+                )
 
     if not scores:
         scores.update({agent_id: 0.0 for agent_id in agents})
-    ranked = [agent_id for agent_id, _ in scores.most_common()]
+    if online_evidence_mode == "transition_only":
+        ranked = sorted(scores, key=lambda agent_id: (-scores[agent_id], _agent_order_key(agent_id)))
+    else:
+        ranked = [agent_id for agent_id, _ in scores.most_common()]
     metadata = {
         "event_type": event_type,
         "current_agent_id": current_agent,
@@ -1224,6 +1803,9 @@ def _rank_next_agents(
         "graph_source": graph_source,
         "outgoing_agents": outgoing_agents,
         "candidate_agents": list(scores.keys()),
+        "profile_score_candidates": (
+            profile_score_candidates if event_type == "main_turn" else []
+        ),
         "semantic_profile_scores": task_profile_scores if event_type == "main_turn" else {},
         "memory_profile_scores": memory_profile_scores if event_type == "main_turn" else {},
         "prompt_profile_scores": prompt_profile_scores if event_type == "main_turn" else {},
@@ -1236,6 +1818,10 @@ def _rank_next_agents(
         "meta_prior_scores": meta_prior_scores if event_type == "main_turn" else {},
         "adaptive_cross_file_scores": adaptive_cross_file_scores if event_type == "main_turn" else {},
         "contextual_cross_file_scores": contextual_cross_file_scores if event_type == "main_turn" else {},
+        "episodic_cross_file_scores": episodic_cross_file_scores if event_type == "main_turn" else {},
+        "profile_signature_transition_scores": profile_signature_transition_scores if event_type == "main_turn" else {},
+        "roster_position_transition_scores": roster_position_transition_scores if event_type == "main_turn" else {},
+        "first_target_profile_scores": first_target_profile_scores if event_type == "main_turn" else {},
         "adaptive_cross_file_profile_stability": (
             adaptive_cross_file_profile_stability if event_type == "main_turn" else 0.0
         ),
@@ -1243,6 +1829,8 @@ def _rank_next_agents(
         "visible_context_features": visible_context_features if event_type == "main_turn" else {},
         "source_turn_count": source_turn_count if event_type == "main_turn" else 0,
         "round_index": round_index if event_type == "main_turn" else 0,
+        "candidate_scope": candidate_scope,
+        "local_transition_memory_enabled": enable_local_transition_memory,
     }
     return ranked, dict(scores), metadata
 
@@ -1490,12 +2078,21 @@ def _evaluate_file(
     use_cross_file_memory: bool,
     cross_file_stat_weight: float,
     enable_adaptive_cross_file_prior: bool,
+    enable_profile_signature_transition_prior: bool,
+    enable_roster_position_transition_prior: bool,
+    enable_episodic_cross_file_prior: bool = False,
     adaptive_cross_file_weight: float,
     adaptive_cross_file_min_support: int,
     adaptive_cross_file_min_confidence: float,
     adaptive_cross_file_min_profile_stability: float,
+    enable_graph_order_prior: bool,
+    enable_role_workflow_prior: bool,
+    enable_local_transition_memory: bool,
+    online_evidence_mode: str,
     enable_research_schedule_prior: bool,
     enable_research_meta_prior: bool,
+    enable_profile_similarity_prior: bool,
+    profile_similarity_mode: str,
     enable_idf_profile_prior: bool,
     enable_online_pair_calibration: bool,
     pair_calibration_margin: int,
@@ -1504,9 +2101,17 @@ def _evaluate_file(
     visible_context_length_weight: float,
     dataset_name: str,
     prediction_target: str,
+    agent_id_view: str = "original",
+    agent_id_salt: str = "",
     collect_transition_updates: bool = False,
 ) -> tuple[list[dict[str, Any]], list[str], dict[str, Any]]:
     events = _read_jsonl(path)
+    events = _apply_agent_id_view(
+        events,
+        agent_id_view=agent_id_view,
+        seed_text=path.name,
+        agent_id_salt=agent_id_salt,
+    )
     if not events:
         return [], [], {"file_name": path.name, "event_count": 0}
     first_agents = events[0].get("agents") or {}
@@ -1524,16 +2129,17 @@ def _evaluate_file(
         else enumerate(events[:-1])
     )
     for step_index, event in iterable:
-        expected = (
-            str(event.get("agent_id") or "")
-            if prediction_target == "current_event"
-            else str(events[step_index + 1].get("agent_id") or "")
-        )
-        expected_event_type = (
-            "current_event"
-            if prediction_target == "current_event"
-            else _classify_event(events[step_index + 1])
-        )
+        if prediction_target == "current_event":
+            expected_agent_ids = [str(event.get("agent_id") or "")]
+            expected_target_source = "current_event"
+            expected_event_type = "current_event"
+        else:
+            expected_agent_ids, expected_target_source = _expected_next_agent_targets(
+                events,
+                step_index,
+            )
+            expected_event_type = _classify_event(events[step_index + 1])
+        expected = expected_agent_ids[0] if expected_agent_ids else ""
         started = time.perf_counter()
         if prediction_target == "current_event":
             ranked, scores = _rank_agents(
@@ -1561,12 +2167,22 @@ def _evaluate_file(
                 use_cross_file_memory=use_cross_file_memory,
                 cross_file_stat_weight=cross_file_stat_weight,
                 enable_adaptive_cross_file_prior=enable_adaptive_cross_file_prior,
+                enable_profile_signature_transition_prior=enable_profile_signature_transition_prior,
+                enable_roster_position_transition_prior=enable_roster_position_transition_prior,
+                enable_episodic_cross_file_prior=enable_episodic_cross_file_prior,
                 adaptive_cross_file_weight=adaptive_cross_file_weight,
                 adaptive_cross_file_min_support=adaptive_cross_file_min_support,
                 adaptive_cross_file_min_confidence=adaptive_cross_file_min_confidence,
                 adaptive_cross_file_min_profile_stability=adaptive_cross_file_min_profile_stability,
+                enable_graph_order_prior=enable_graph_order_prior,
+                enable_role_workflow_prior=enable_role_workflow_prior,
+                enable_local_transition_memory=enable_local_transition_memory,
+                online_evidence_mode=online_evidence_mode,
+                candidate_scope=candidate_scope,
                 enable_research_schedule_prior=enable_research_schedule_prior,
                 enable_research_meta_prior=enable_research_meta_prior,
+                enable_profile_similarity_prior=enable_profile_similarity_prior,
+                profile_similarity_mode=profile_similarity_mode,
                 enable_idf_profile_prior=enable_idf_profile_prior,
                 include_visible_agent_context=include_visible_agent_context,
                 visible_context_similarity_weight=visible_context_similarity_weight,
@@ -1606,30 +2222,40 @@ def _evaluate_file(
         counted_for_metric = (
             True
             if prediction_target == "current_event"
-            else _is_predictive_next_agent_step(
-                str(prediction_metadata["event_type"]),
-                expected_event_type,
-            )
+            else str(prediction_metadata["event_type"]) == "main_turn"
+            and bool(expected_agent_ids)
         )
         hit_at = {
-            "1": expected in ranked[:1],
-            "2": expected in ranked[:2],
-            "3": expected in ranked[:3],
-            "5": expected in ranked[:5],
+            "1": _target_set_hit(expected_agent_ids, ranked, 1),
+            "2": _target_set_hit(expected_agent_ids, ranked, 2),
+            "3": _target_set_hit(expected_agent_ids, ranked, 3),
+            "5": _target_set_hit(expected_agent_ids, ranked, 5),
+        }
+        target_recall_at = {
+            "1": _target_set_recall(expected_agent_ids, ranked, 1),
+            "2": _target_set_recall(expected_agent_ids, ranked, 2),
+            "3": _target_set_recall(expected_agent_ids, ranked, 3),
+            "5": _target_set_recall(expected_agent_ids, ranked, 5),
         }
         # Audit only: do not feed request/messages to the policy.
         request_text = json.dumps(event.get("request") or {}, ensure_ascii=False)
-        if f"You are {expected}" in request_text or f"你是 {expected}" in request_text:
+        if _request_contains_exact_agent_marker(request_text, expected):
             forbidden_current_text_hits += 1
         timing_records.append(
             {
                 "dataset_name": dataset_name,
                 "file_name": path.name,
+                "source_log_path": str(path),
                 "workflow_id": str(event.get("workflow_id") or path.stem),
                 "step_index": step_index,
                 "event_id": str(event.get("event_id") or ""),
                 "expected_agent_id": expected,
+                "expected_agent_ids": expected_agent_ids,
+                "expected_agent_count": len(expected_agent_ids),
+                "expected_target_source": expected_target_source,
                 "prediction_target": prediction_target,
+                "agent_id_view": agent_id_view,
+                "agent_id_salt": agent_id_salt,
                 "current_agent_id": prediction_metadata["current_agent_id"],
                 "event_type": prediction_metadata["event_type"],
                 "expected_event_type": expected_event_type,
@@ -1642,7 +2268,12 @@ def _evaluate_file(
                 "global_bigram_size_before_prediction": len(global_memory.bigram),
                 "ranking_reason": prediction_metadata["ranking_reason"],
                 "graph_source": prediction_metadata["graph_source"],
+                "candidate_scope": prediction_metadata.get("candidate_scope", candidate_scope),
                 "outgoing_agents": prediction_metadata["outgoing_agents"],
+                "profile_score_candidates": prediction_metadata.get(
+                    "profile_score_candidates",
+                    [],
+                ),
                 "semantic_profile_scores": prediction_metadata.get("semantic_profile_scores", {}),
                 "memory_profile_scores": prediction_metadata.get("memory_profile_scores", {}),
                 "prompt_profile_scores": prediction_metadata.get("prompt_profile_scores", {}),
@@ -1663,6 +2294,22 @@ def _evaluate_file(
                     "contextual_cross_file_scores",
                     {},
                 ),
+                "episodic_cross_file_scores": prediction_metadata.get(
+                    "episodic_cross_file_scores",
+                    {},
+                ),
+                "profile_signature_transition_scores": prediction_metadata.get(
+                    "profile_signature_transition_scores",
+                    {},
+                ),
+                "roster_position_transition_scores": prediction_metadata.get(
+                    "roster_position_transition_scores",
+                    {},
+                ),
+                "first_target_profile_scores": prediction_metadata.get(
+                    "first_target_profile_scores",
+                    {},
+                ),
                 "adaptive_cross_file_profile_stability": prediction_metadata.get(
                     "adaptive_cross_file_profile_stability",
                     0.0,
@@ -1677,6 +2324,7 @@ def _evaluate_file(
                     for agent_id in ranked[:5]
                 },
                 "hit_at_k": hit_at,
+                "target_recall_at_k": target_recall_at,
                 "base_top_scores": {
                     agent_id: (
                         scores.get(agent_id, 0.0)
@@ -1698,15 +2346,17 @@ def _evaluate_file(
             current_agent = str(event.get("agent_id") or "")
             state.update_after_prediction(event, current_agent)
             sequence.append(current_agent)
-            next_state.update_after_transition(
-                event=event,
-                event_type=prediction_metadata["event_type"],
-                observed_next_agent=expected,
-                outgoing_agents=prediction_metadata["outgoing_agents"],
-                learn_transition=counted_for_metric,
-            )
+            if online_feedback_scope == "event":
+                next_state.update_after_transition(
+                    event=event,
+                    event_type=prediction_metadata["event_type"],
+                    observed_next_agent=expected,
+                    outgoing_agents=prediction_metadata["outgoing_agents"],
+                    learn_transition=counted_for_metric,
+                )
             if (
                 next_reranker is not None
+                and online_feedback_scope == "event"
                 and prediction_metadata["event_type"] == "main_turn"
                 and ranked
                 and counted_for_metric
@@ -1718,7 +2368,7 @@ def _evaluate_file(
                 )
             if prediction_metadata["event_type"] == "main_turn" and counted_for_metric:
                 pair_signature = prediction_metadata.get("pair_calibration_signature") or []
-                if len(pair_signature) == 2:
+                if online_feedback_scope == "event" and len(pair_signature) == 2:
                     pair_calibration_counts[(pair_signature[0], pair_signature[1])][
                         expected == pair_signature[1]
                     ] += 1
@@ -1728,15 +2378,28 @@ def _evaluate_file(
                     "outgoing_agents": prediction_metadata["outgoing_agents"],
                     "round_index": prediction_metadata.get("round_index", 0),
                     "source_turn_count": prediction_metadata.get("source_turn_count", 0),
+                    "current_agent_profile_text": _agent_profile_text(event, current_agent),
+                    "observed_next_agent_profile_text": _agent_profile_text(event, expected),
+                    "task_profile_text": str(event.get("task_profile") or ""),
+                    "current_agent_roster_position": _agent_roster_position(
+                        event,
+                        current_agent,
+                    ),
+                    "observed_next_agent_roster_position": _agent_roster_position(
+                        event,
+                        expected,
+                    ),
                 }
                 if collect_transition_updates:
                     transition_updates.append(transition_update)
-                next_global_memory.update(
-                    **transition_update,
-                )
+                if online_feedback_scope == "event":
+                    next_global_memory.update(
+                        **transition_update,
+                    )
 
     audit = {
         "file_name": path.name,
+        "source_log_path": str(path),
         "event_count": len(events),
         "decision_step_count": (
             sum(1 for record in timing_records if record.get("counted_for_metric"))
@@ -1746,6 +2409,8 @@ def _evaluate_file(
         "agent_count": len(agents),
         "agents": agents,
         "prediction_target": prediction_target,
+        "agent_id_view": agent_id_view,
+        "agent_id_salt": agent_id_salt,
         "request_messages_not_used": prediction_target == "current_event",
         "current_agent_id_used_as_visible_input": prediction_target == "next_agent",
         "current_agent_id_used_only_as_label_after_prediction": prediction_target == "current_event",
@@ -1766,6 +2431,7 @@ def _evaluate_file(
             for agent_id, agent in first_agents.items()
             if isinstance(agent, dict)
         },
+        "_task_profile_text": str(events[0].get("task_profile") or ""),
     }
     if collect_transition_updates:
         audit["_transition_updates"] = transition_updates
@@ -1784,7 +2450,9 @@ def _summarize(records: list[dict[str, Any]], *, dataset_name: str, file_count: 
         str(hit_k): sum(
             1
             for record in records
-            if record["expected_agent_id"] in (record.get("base_prediction") or [])[:hit_k]
+            if set(record.get("expected_agent_ids") or [record.get("expected_agent_id")]).intersection(
+                (record.get("base_prediction") or [])[:hit_k]
+            )
         )
         for hit_k in (1, 2, 3, 5)
     }
@@ -1835,18 +2503,31 @@ def evaluate_logs(
     reranker_learning_rate: float,
     reranker_base_score_scale: float,
     enable_adaptive_cross_file_prior: bool,
+    enable_profile_signature_transition_prior: bool,
+    enable_roster_position_transition_prior: bool,
+    enable_episodic_cross_file_prior: bool,
     adaptive_cross_file_weight: float,
     adaptive_cross_file_min_support: int,
     adaptive_cross_file_min_confidence: float,
     adaptive_cross_file_min_profile_stability: float,
+    enable_graph_order_prior: bool,
+    enable_role_workflow_prior: bool,
+    enable_local_transition_memory: bool,
+    online_evidence_mode: str,
+    candidate_scope: str,
+    online_feedback_scope: str,
     enable_research_schedule_prior: bool,
     enable_research_meta_prior: bool,
+    enable_profile_similarity_prior: bool,
+    profile_similarity_mode: str,
     enable_idf_profile_prior: bool,
     enable_online_pair_calibration: bool,
     pair_calibration_margin: int,
     include_visible_agent_context: bool,
     visible_context_similarity_weight: float,
     visible_context_length_weight: float,
+    agent_id_view: str,
+    agent_id_salt: str,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     paths = _discover_raw_event_logs(log_root)
     global_memory = OnlinePatternMemory()
@@ -1881,12 +2562,23 @@ def evaluate_logs(
             use_cross_file_memory=use_cross_file_memory,
             cross_file_stat_weight=cross_file_stat_weight,
             enable_adaptive_cross_file_prior=enable_adaptive_cross_file_prior,
+            enable_profile_signature_transition_prior=enable_profile_signature_transition_prior,
+            enable_roster_position_transition_prior=enable_roster_position_transition_prior,
+            enable_episodic_cross_file_prior=enable_episodic_cross_file_prior,
             adaptive_cross_file_weight=adaptive_cross_file_weight,
             adaptive_cross_file_min_support=adaptive_cross_file_min_support,
             adaptive_cross_file_min_confidence=adaptive_cross_file_min_confidence,
             adaptive_cross_file_min_profile_stability=adaptive_cross_file_min_profile_stability,
+            enable_graph_order_prior=enable_graph_order_prior,
+            enable_role_workflow_prior=enable_role_workflow_prior,
+            enable_local_transition_memory=enable_local_transition_memory,
+            online_evidence_mode=online_evidence_mode,
+            candidate_scope=candidate_scope,
+            online_feedback_scope=online_feedback_scope,
             enable_research_schedule_prior=enable_research_schedule_prior,
             enable_research_meta_prior=enable_research_meta_prior,
+            enable_profile_similarity_prior=enable_profile_similarity_prior,
+            profile_similarity_mode=profile_similarity_mode,
             enable_idf_profile_prior=enable_idf_profile_prior,
             enable_online_pair_calibration=enable_online_pair_calibration,
             pair_calibration_margin=pair_calibration_margin,
@@ -1895,6 +2587,9 @@ def evaluate_logs(
             visible_context_length_weight=visible_context_length_weight,
             dataset_name=dataset_name,
             prediction_target=prediction_target,
+            agent_id_view=agent_id_view,
+            agent_id_salt=agent_id_salt,
+            collect_transition_updates=online_feedback_scope == "query",
         )
         for record in timing_records:
             record["file_index"] = file_index
@@ -1903,14 +2598,64 @@ def evaluate_logs(
         audit["file_index"] = file_index
         audit["use_cross_file_memory"] = use_cross_file_memory
         profile_texts = audit.pop("_agent_profile_texts", {})
+        task_profile_text = audit.pop("_task_profile_text", "")
+        transition_updates = audit.pop("_transition_updates", [])
         audit_records.append(audit)
         if use_cross_file_memory:
             global_memory.update_sequence(sequence)
+            if online_feedback_scope == "query":
+                for transition_update in transition_updates:
+                    next_global_memory.update(**transition_update)
             next_global_memory.update_file_summary(
                 audit.get("first_main_target"),
                 profile_texts=profile_texts,
+                task_profile_text=task_profile_text,
             )
     output_records = _primary_records(all_records, prediction_target=prediction_target)
+    non_online_prior_flags = {
+        "graph_order_prior": bool(enable_graph_order_prior),
+        "role_workflow_prior": bool(enable_role_workflow_prior),
+        "visible_order_prior": bool(enable_research_schedule_prior),
+        "cross_query_start_prior": bool(enable_research_meta_prior),
+        "profile_similarity_prior": bool(enable_profile_similarity_prior),
+        "idf_profile_prior": bool(enable_idf_profile_prior),
+        "visible_agent_context": bool(include_visible_agent_context),
+        "profile_signature_transition_prior": bool(enable_profile_signature_transition_prior),
+        "roster_position_transition_prior": bool(enable_roster_position_transition_prior),
+        "episodic_profile_position_prior": bool(enable_episodic_cross_file_prior),
+        "local_transition_memory": bool(enable_local_transition_memory),
+        "heuristic_online_evidence": online_evidence_mode != "transition_only",
+        "event_feedback_within_query": online_feedback_scope == "event",
+    }
+    strict_online_compatible = (
+        prediction_target == "next_agent" and not any(non_online_prior_flags.values())
+    )
+    profile_conditioned_compatible = (
+        prediction_target == "next_agent"
+        and (
+            bool(enable_profile_signature_transition_prior)
+            or bool(enable_roster_position_transition_prior)
+        )
+        and not any(
+            value
+            for key, value in non_online_prior_flags.items()
+            if key
+            not in {
+                "profile_signature_transition_prior",
+                "roster_position_transition_prior",
+                "local_transition_memory",
+            }
+        )
+    )
+    candidate_space_description = (
+        "all visible agents from the current file's static agents roster"
+        if candidate_scope == "all_agents"
+        else "all visible non-PLANNER agents from the current file's static agents roster"
+        if candidate_scope == "all_worker_agents"
+        else "visible target_agent_id enum or inferred graph outgoing agents plus PLANNER"
+        if prediction_target == "next_agent"
+        else "all agents in the current file's static agents roster"
+    )
     report = {
         "protocol": (
             f"{prediction_target}_online_across_files"
@@ -1918,13 +2663,56 @@ def evaluate_logs(
             else f"{prediction_target}_per_file_zero_online"
         ),
         "log_root": str(log_root),
+        "policy_claim": {
+            "claim": (
+                "online_learning_no_candidate_narrowing"
+                if strict_online_compatible and candidate_scope == "all_agents"
+                else "online_learning_with_visible_candidate_scope"
+                if strict_online_compatible
+                else "profile_conditioned_online_memory"
+                if profile_conditioned_compatible
+                else "structural_prior_or_other_target"
+            ),
+            "reporting_rule": (
+                "May be reported as strict online-learning next-agent accuracy, but "
+                "candidate_scope must be disclosed because visible graph/tool-schema "
+                "candidates can strongly narrow the search space."
+                if strict_online_compatible
+                else (
+                    "May be reported as profile/roster-conditioned online memory: raw "
+                    "cross-query agent-id transition counts are disabled and completed "
+                    "queries are aggregated by visible profile signatures and/or "
+                    "visible worker roster positions."
+                )
+                if profile_conditioned_compatible
+                else (
+                    "Do not report as strict online-learning next-agent accuracy unless "
+                    "prediction_target=next_agent and all non-online prior flags are false."
+                )
+            ),
+        },
+        "non_online_prior_flags": non_online_prior_flags,
+        "online_evidence_mode": online_evidence_mode,
+        "online_feedback_scope": online_feedback_scope,
+        "candidate_scope": candidate_scope,
+        "agent_id_view": agent_id_view,
+        "agent_id_salt": agent_id_salt,
         "input_view": (
             "static agents roster + previous observed agent sequence + previous observed parent edges; "
             "no current request/messages, no prediction field, no transition_candidates"
             if prediction_target == "current_event"
             else "current executing agent id + current request scheduling metadata + inferred prompt collaboration graph + "
             "previous observed transitions"
-            " + visible profile-derived role workflow prior"
+            + (
+                " + visible graph candidate-order prior"
+                if enable_graph_order_prior
+                else ""
+            )
+            + (
+                " + visible profile-derived role workflow prior"
+                if enable_role_workflow_prior
+                else ""
+            )
             + (
                 " + current-event visible agents[*].context history snapshots"
                 if include_visible_agent_context
@@ -1933,6 +2721,21 @@ def evaluate_logs(
             + (
                 " + adaptive/contextual cross-file transition prior from completed queries"
                 if enable_adaptive_cross_file_prior and use_cross_file_memory
+                else ""
+            )
+            + (
+                " + profile-signature transition memory from completed queries"
+                if enable_profile_signature_transition_prior and use_cross_file_memory
+                else ""
+            )
+            + (
+                " + visible roster-position transition memory from completed queries"
+                if enable_roster_position_transition_prior and use_cross_file_memory
+                else ""
+            )
+            + (
+                " + episodic profile/position transition prior from completed queries"
+                if enable_episodic_cross_file_prior and use_cross_file_memory
                 else ""
             )
             + (
@@ -1945,13 +2748,14 @@ def evaluate_logs(
                 if enable_online_pair_calibration
                 else ""
             )
+            + (
+                " + local same-query current_agent->next_agent transition memory"
+                if enable_local_transition_memory
+                else " + no local raw agent-id transition memory"
+            )
             + "; no future event, no next label before scoring, no prediction field, no transition_candidates"
         ),
-        "candidate_space": (
-            "visible target_agent_id enum or inferred graph outgoing agents plus PLANNER"
-            if prediction_target == "next_agent"
-            else "all agents in the current file's static agents roster"
-        ),
+        "candidate_space": candidate_space_description,
         "prediction_target": prediction_target,
         "online_reranker_enabled": enable_online_reranker,
         "online_reranker_learning_rate": reranker_learning_rate if enable_online_reranker else 0.0,
@@ -1982,12 +2786,27 @@ def evaluate_logs(
             if use_cross_file_memory and enable_adaptive_cross_file_prior
             else 0.0
         ),
+        "visible_graph_order_prior_enabled": enable_graph_order_prior,
         "visible_order_prior_enabled": enable_research_schedule_prior,
-        "visible_role_workflow_prior_enabled": True,
+        "visible_role_workflow_prior_enabled": enable_role_workflow_prior,
+        "local_transition_memory_enabled": enable_local_transition_memory,
         "contextual_cross_file_prior_enabled": (
             enable_adaptive_cross_file_prior if use_cross_file_memory else False
         ),
+        "profile_signature_transition_prior_enabled": (
+            enable_profile_signature_transition_prior if use_cross_file_memory else False
+        ),
+        "roster_position_transition_prior_enabled": (
+            enable_roster_position_transition_prior if use_cross_file_memory else False
+        ),
+        "episodic_cross_file_prior_enabled": (
+            enable_episodic_cross_file_prior if use_cross_file_memory else False
+        ),
         "cross_query_start_prior_enabled": enable_research_meta_prior,
+        "profile_similarity_prior_enabled": enable_profile_similarity_prior,
+        "profile_similarity_mode": (
+            profile_similarity_mode if enable_profile_similarity_prior else "off"
+        ),
         "idf_profile_prior_enabled": enable_idf_profile_prior,
         "online_pair_calibration_enabled": enable_online_pair_calibration,
         "pair_calibration_margin": (
@@ -2039,7 +2858,7 @@ def main() -> None:
     parser.add_argument(
         "--prediction-target",
         choices=("current_event", "next_agent"),
-        default="current_event",
+        default="next_agent",
         help=(
             "current_event predicts the current event agent from prior history only. "
             "next_agent assumes the current executing agent is visible and predicts the next event agent."
@@ -2057,34 +2876,62 @@ def main() -> None:
     parser.add_argument(
         "--enable-adaptive-cross-file-prior",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help=(
             "For next_agent main_turn steps, use completed-query transition memory only "
             "when the current source agent has enough stable cross-file evidence."
         ),
     )
     parser.add_argument(
+        "--enable-episodic-cross-file-prior",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "For next_agent main_turn steps, use completed-query profile/position "
+            "transition examples as an additional no-leak prior."
+        ),
+    )
+    parser.add_argument(
+        "--enable-profile-signature-transition-prior",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "For next_agent main_turn steps, learn source-profile-signature to "
+            "target-profile-signature transitions from completed queries. This avoids "
+            "raw cross-query agent-id transition counts."
+        ),
+    )
+    parser.add_argument(
+        "--enable-roster-position-transition-prior",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Learn visible worker-roster-position transitions from completed queries. "
+            "This uses structural order in agents, not raw agent-id labels."
+        ),
+    )
+    parser.add_argument(
         "--adaptive-cross-file-weight",
         type=float,
-        default=24.0,
+        default=30.0,
         help="Maximum scale for the confidence-gated cross-file transition prior.",
     )
     parser.add_argument(
         "--adaptive-cross-file-min-support",
         type=int,
-        default=4,
+        default=1,
         help="Minimum completed-query observations before a cross-file prior can fire.",
     )
     parser.add_argument(
         "--adaptive-cross-file-min-confidence",
         type=float,
-        default=0.60,
+        default=0.40,
         help="Minimum dominant transition ratio before a cross-file prior can fire.",
     )
     parser.add_argument(
         "--adaptive-cross-file-min-profile-stability",
         type=float,
-        default=0.35,
+        default=0.0,
         help=(
             "Minimum same-agent profile similarity to previous completed queries before "
             "agent-id cross-file memory is trusted."
@@ -2101,6 +2948,80 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--enable-graph-order-prior",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Apply a static bonus to earlier visible graph/tool-schema candidates. "
+            "Keep this disabled for strict online-learning evaluation."
+        ),
+    )
+    parser.add_argument(
+        "--enable-role-workflow-prior",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Apply hand-written role workflow priors such as analyst->implementation. "
+            "This is useful as a structural-prior ablation, but is disabled by default "
+            "because it is not online learning."
+        ),
+    )
+    parser.add_argument(
+        "--enable-local-transition-memory",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use already observed same-query current_agent->next_agent transition "
+            "counts after those steps have occurred. Disable for skeptical audits "
+            "that should avoid raw local agent-id transition memory."
+        ),
+    )
+    parser.add_argument(
+        "--online-evidence-mode",
+        choices=("transition_only", "heuristic"),
+        default="transition_only",
+        help=(
+            "transition_only uses only learned current_agent->next_agent transition "
+            "counts. heuristic also enables visible-history target refs, round/position "
+            "counts, recent-target, hub, and planner-coverage heuristics."
+        ),
+    )
+    parser.add_argument(
+        "--online-feedback-scope",
+        choices=("query", "event"),
+        default="query",
+        help=(
+            "query freezes online memory inside each query and updates only after the "
+            "query completes; event updates after each scored event and represents "
+            "query-internal adaptive prediction."
+        ),
+    )
+    parser.add_argument(
+        "--candidate-scope",
+        choices=("visible_graph", "all_agents", "all_worker_agents"),
+        default="visible_graph",
+        help=(
+            "visible_graph uses the current visible tool-schema/graph outgoing set; "
+            "all_agents disables that candidate narrowing and ranks every visible "
+            "agent in the file; all_worker_agents ranks every visible non-PLANNER agent."
+        ),
+    )
+    parser.add_argument(
+        "--agent-id-view",
+        choices=("original", "per_file_permutation"),
+        default="original",
+        help=(
+            "original keeps raw agent ids. per_file_permutation consistently renames "
+            "worker agent ids inside each query file, with a different deterministic "
+            "permutation per file, to audit dependence on fixed cross-query agent ids."
+        ),
+    )
+    parser.add_argument(
+        "--agent-id-salt",
+        default="",
+        help="Optional salt for deterministic per-file agent-id permutation audits.",
+    )
+    parser.add_argument(
         "--enable-cross-query-start-prior",
         dest="enable_cross_query_start_prior",
         action=argparse.BooleanOptionalAction,
@@ -2109,6 +3030,25 @@ def main() -> None:
             "Apply an online cross-query start prior: reuse the previous completed "
             "query's first predictive target when cross-file memory is enabled, and "
             "lightly reuse the current query's already observed second predictive target."
+        ),
+    )
+    parser.add_argument(
+        "--enable-profile-similarity-prior",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Use candidate profile/task/memory/prompt token similarity. It is disabled "
+            "by default because strict online-learning evaluation should not rely on "
+            "profile-text structural priors."
+        ),
+    )
+    parser.add_argument(
+        "--profile-similarity-mode",
+        choices=("full", "task"),
+        default="full",
+        help=(
+            "full scores task, memory, and prompt text against candidate profiles; "
+            "task keeps only the cheaper task-profile similarity."
         ),
     )
     parser.add_argument(
@@ -2126,7 +3066,8 @@ def main() -> None:
         default=False,
         help=(
             "Within each query, learn whether the current top1/top2 pair should be "
-            "swapped from previous scored decisions. Updates happen only after scoring."
+            "swapped from previous scored decisions. Disabled by default because it "
+            "can overfit very small cold-start streams."
         ),
     )
     parser.add_argument(
@@ -2169,18 +3110,31 @@ def main() -> None:
         reranker_learning_rate=args.reranker_learning_rate,
         reranker_base_score_scale=args.reranker_base_score_scale,
         enable_adaptive_cross_file_prior=args.enable_adaptive_cross_file_prior,
+        enable_profile_signature_transition_prior=args.enable_profile_signature_transition_prior,
+        enable_roster_position_transition_prior=args.enable_roster_position_transition_prior,
+        enable_episodic_cross_file_prior=args.enable_episodic_cross_file_prior,
         adaptive_cross_file_weight=args.adaptive_cross_file_weight,
         adaptive_cross_file_min_support=args.adaptive_cross_file_min_support,
         adaptive_cross_file_min_confidence=args.adaptive_cross_file_min_confidence,
         adaptive_cross_file_min_profile_stability=args.adaptive_cross_file_min_profile_stability,
+        enable_graph_order_prior=args.enable_graph_order_prior,
+        enable_role_workflow_prior=args.enable_role_workflow_prior,
+        enable_local_transition_memory=args.enable_local_transition_memory,
+        online_evidence_mode=args.online_evidence_mode,
+        candidate_scope=args.candidate_scope,
+        online_feedback_scope=args.online_feedback_scope,
         enable_research_schedule_prior=args.enable_visible_order_prior,
         enable_research_meta_prior=args.enable_cross_query_start_prior,
+        enable_profile_similarity_prior=args.enable_profile_similarity_prior,
+        profile_similarity_mode=args.profile_similarity_mode,
         enable_idf_profile_prior=args.enable_idf_profile_prior,
         enable_online_pair_calibration=args.enable_online_pair_calibration,
         pair_calibration_margin=args.pair_calibration_margin,
         include_visible_agent_context=args.include_visible_agent_context,
         visible_context_similarity_weight=args.visible_context_similarity_weight,
         visible_context_length_weight=args.visible_context_length_weight,
+        agent_id_view=args.agent_id_view,
+        agent_id_salt=args.agent_id_salt,
     )
     args.report_path.parent.mkdir(parents=True, exist_ok=True)
     args.report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")

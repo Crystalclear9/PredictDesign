@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+import sys
 import tempfile
 import unittest
 import json
@@ -35,6 +37,44 @@ from predictdesign.prediction import PredictedGraphAction
 from predictdesign.state_update import MDPStateUpdater, build_state_updater
 
 MISSING_ST_MODEL = "__missing_sentence_transformer_model__"
+
+
+def _load_run_new_log_cold_start_module():
+    module_path = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "benchmark"
+        / "run_new_log_cold_start.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "run_new_log_cold_start_for_test",
+        module_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load benchmark module: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_run_new_log_concurrent_suite_module():
+    module_path = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "benchmark"
+        / "run_new_log_concurrent_suite.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "run_new_log_concurrent_suite_for_test",
+        module_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load benchmark module: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 class PredictDesignTests(unittest.TestCase):
@@ -79,6 +119,248 @@ class PredictDesignTests(unittest.TestCase):
         self.assertEqual(gru.hidden_dim, 12)
         self.assertEqual(mdp.hidden_dim, 12)
         self.assertEqual(mdp.latent_action_count, 3)
+
+    def test_per_file_agent_id_permutation_remaps_labels_and_visible_inputs(self) -> None:
+        events = [
+            {
+                "task_profile": "agent3 should inspect the result",
+                "workflow_id": "wf",
+                "event_id": "e1",
+                "agent_id": "agent1",
+                "parent_event_ids": [],
+                "request": {
+                    "messages": [{"content": "You are agent1; ask agent2 next."}],
+                    "tools": [
+                        {
+                            "function": {
+                                "parameters": {
+                                    "properties": {
+                                        "target_agent_id": {
+                                            "enum": ["agent2", "agent3"]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                },
+                "agents": {
+                    "PLANNER": {"profile": "planner"},
+                    "agent1": {"profile": "agent1 profile"},
+                    "agent2": {"profile": "agent2 profile"},
+                    "agent3": {"profile": "agent3 profile"},
+                },
+            },
+            {
+                "task_profile": "agent2 completes work",
+                "workflow_id": "wf",
+                "event_id": "e2",
+                "agent_id": "agent2",
+                "parent_event_ids": ["agent1"],
+                "request": {"messages": [{"content": "You are agent2"}]},
+                "agents": {
+                    "PLANNER": {"profile": "planner"},
+                    "agent1": {"profile": "agent1 profile"},
+                    "agent2": {"profile": "agent2 profile"},
+                    "agent3": {"profile": "agent3 profile"},
+                },
+            },
+        ]
+        salt = "audit-seed"
+        seed_text = "example.jsonl"
+        cold_start_module = _load_run_new_log_cold_start_module()
+        mapping = cold_start_module._per_file_agent_id_mapping(
+            ["PLANNER", "agent1", "agent2", "agent3"],
+            f"{salt}:{seed_text}",
+        )
+
+        remapped = cold_start_module._apply_agent_id_view(
+            events,
+            agent_id_view="per_file_permutation",
+            seed_text=seed_text,
+            agent_id_salt=salt,
+        )
+
+        self.assertEqual(remapped[0]["agent_id"], mapping["agent1"])
+        self.assertEqual(remapped[1]["agent_id"], mapping["agent2"])
+        self.assertEqual(remapped[1]["parent_event_ids"], [mapping["agent1"]])
+        self.assertEqual(
+            remapped[0]["request"]["tools"][0]["function"]["parameters"]["properties"][
+                "target_agent_id"
+            ]["enum"],
+            [mapping["agent2"], mapping["agent3"]],
+        )
+        self.assertIn(mapping["agent1"], remapped[0]["agents"])
+        self.assertIn(mapping["agent2"], remapped[0]["request"]["messages"][0]["content"])
+        self.assertEqual(
+            cold_start_module._agent_roster_position(remapped[0], mapping["agent1"]),
+            1,
+        )
+
+    def test_profile_role_tag_does_not_match_substrings_inside_research_terms(self) -> None:
+        cold_start_module = _load_run_new_log_cold_start_module()
+        research_profile = (
+            "I am a researcher studying variational autoencoders, graph neural "
+            "networks, and robust machine learning."
+        )
+        coding_profile = (
+            "I am a Coding Implementation Agent. I specialize in creating "
+            "solution.py and revising the implementation."
+        )
+
+        self.assertIsNone(cold_start_module._role_tag_from_profile(research_profile))
+        self.assertEqual(
+            cold_start_module._role_tag_from_profile(coding_profile),
+            "implementation",
+        )
+
+    def test_profile_signature_does_not_use_hard_coded_coding_role_tag(self) -> None:
+        cold_start_module = _load_run_new_log_cold_start_module()
+        signature = cold_start_module._agent_profile_signature(
+            "I am a Coding Implementation Agent. I create solution.py."
+        )
+
+        self.assertTrue(signature.startswith("profile:"))
+        self.assertNotIn("role:implementation", signature)
+        self.assertIn("implementation", signature)
+
+    def test_all_agent_semantic_scope_scores_non_graph_candidates(self) -> None:
+        cold_start_module = _load_run_new_log_cold_start_module()
+        event = {
+            "task_profile": "privacy preserving optimization for student learning",
+            "workflow_id": "wf",
+            "event_id": "e1",
+            "agent_id": "agent1",
+            "request": {
+                "messages": [{"content": "You are agent1."}],
+                "tools": [
+                    {
+                        "function": {
+                            "parameters": {
+                                "properties": {
+                                    "target_agent_id": {"enum": ["agent2"]}
+                                }
+                            }
+                        }
+                    }
+                ],
+            },
+            "agents": {
+                "PLANNER": {"profile": "Runtime scheduler."},
+                "agent1": {"profile": "General coordinator."},
+                "agent2": {"profile": "Graph theory and algebra specialist."},
+                "agent3": {
+                    "profile": (
+                        "Privacy preserving optimization for educational "
+                        "student learning systems."
+                    )
+                },
+            },
+        }
+        ranked, _, metadata = cold_start_module._rank_next_agents(
+            event=event,
+            next_state=cold_start_module.NextAgentPolicyState(),
+            next_global_memory=cold_start_module.NextAgentGlobalMemory(),
+            use_cross_file_memory=False,
+            cross_file_stat_weight=0.0,
+            enable_adaptive_cross_file_prior=False,
+            enable_profile_signature_transition_prior=False,
+            enable_roster_position_transition_prior=False,
+            enable_episodic_cross_file_prior=False,
+            adaptive_cross_file_weight=0.0,
+            adaptive_cross_file_min_support=1,
+            adaptive_cross_file_min_confidence=1.0,
+            adaptive_cross_file_min_profile_stability=0.0,
+            enable_graph_order_prior=False,
+            enable_role_workflow_prior=False,
+            enable_local_transition_memory=False,
+            online_evidence_mode="transition_only",
+            enable_research_schedule_prior=False,
+            enable_research_meta_prior=False,
+            enable_profile_similarity_prior=True,
+            profile_similarity_mode="task",
+            enable_idf_profile_prior=False,
+            include_visible_agent_context=False,
+            visible_context_similarity_weight=0.0,
+            visible_context_length_weight=0.0,
+            agents=["PLANNER", "agent1", "agent2", "agent3"],
+            candidate_scope="all_agents",
+        )
+
+        self.assertEqual(
+            set(metadata["profile_score_candidates"]),
+            {"PLANNER", "agent1", "agent2", "agent3"},
+        )
+        self.assertIn("agent3", metadata["semantic_profile_scores"])
+        self.assertEqual(ranked[0], "agent3")
+
+    def test_pooled_scenario_replay_uses_one_shared_memory_scope(self) -> None:
+        suite_module = _load_run_new_log_concurrent_suite_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for scenario_name in ("coding", "research"):
+                scenario_dir = root / scenario_name
+                scenario_dir.mkdir(parents=True)
+                events = [
+                    {
+                        "task_profile": f"{scenario_name} task",
+                        "workflow_id": f"{scenario_name}_wf",
+                        "event_id": "e1",
+                        "agent_id": "agent1",
+                        "parent_event_ids": [],
+                        "request": {
+                            "messages": [{"content": "You are agent1."}],
+                            "tools": [
+                                {
+                                    "function": {
+                                        "parameters": {
+                                            "properties": {
+                                                "target_agent_id": {
+                                                    "enum": ["agent2"]
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                        },
+                        "agents": {
+                            "PLANNER": {"profile": "Runtime scheduler."},
+                            "agent1": {"profile": "Source agent."},
+                            "agent2": {"profile": "Target agent."},
+                        },
+                    },
+                    {
+                        "task_profile": f"{scenario_name} task",
+                        "workflow_id": f"{scenario_name}_wf",
+                        "event_id": "e2",
+                        "agent_id": "agent2",
+                        "parent_event_ids": ["e1"],
+                        "request": {"messages": [{"content": "You are agent2."}]},
+                        "agents": {
+                            "PLANNER": {"profile": "Runtime scheduler."},
+                            "agent1": {"profile": "Source agent."},
+                            "agent2": {"profile": "Target agent."},
+                        },
+                    },
+                ]
+                (scenario_dir / f"{scenario_name}_task_1_demo.jsonl").write_text(
+                    "\n".join(json.dumps(event) for event in events),
+                    encoding="utf-8",
+                )
+
+            report, records = suite_module.evaluate_suite(
+                root=root,
+                scenarios=["coding", "research"],
+                batch_sizes=[2],
+                policy_mode="strict_all_agents",
+                scenario_replay_mode="pooled",
+            )
+
+        self.assertEqual(report["scenario_replay_mode"], "pooled")
+        self.assertEqual(report["batches"][0]["scenario_replay_mode"], "pooled")
+        self.assertTrue(records)
+        self.assertEqual({record["scenario_replay_mode"] for record in records}, {"pooled"})
 
     def test_concurrent_message_reduce_modes_are_switchable(self) -> None:
         sum_system = self._build_system(concurrent_mode="sum")
